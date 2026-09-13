@@ -15,9 +15,11 @@ from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from mjegg import theme
 from mjegg.about import AboutDialog, APP_NAME, APP_VERSION
+from mjegg.autostart import is_enabled as autostart_enabled, set_enabled as set_autostart
 from mjegg.config import load_config
 from mjegg.overlay import draw_tray_icon_pixmap, spawn_egg_window
 from mjegg.paths import app_dir
+from mjegg.splash import Splash
 from mjegg.watcher import Detector
 
 
@@ -92,6 +94,9 @@ def main():
     detector = Detector(cfg, on_trigger=bridge.trigger.emit)
     detector.start()
 
+    # ---------- 启动 splash: 屏幕中央渐显应用图标 ----------
+    Splash(app_icon).run()
+
     # ---------- 托盘 ----------
     tray = QSystemTrayIcon()
     tray.setIcon(app_icon)
@@ -105,6 +110,13 @@ def main():
 
     tray_action_test = menu.addAction("播放测试")
     tray_action_test.triggered.connect(play)
+
+    tray_action_autostart = menu.addAction("开机自启")
+    tray_action_autostart.setCheckable(True)
+    tray_action_autostart.setChecked(autostart_enabled())
+    tray_action_autostart.toggled.connect(
+        lambda on: log.info("开机自启%s(%s)", "开" if on else "关",
+                            "已写入" if set_autostart(on) else "失败"))
 
     tray_action_about = menu.addAction("关于")
     tray_action_about.triggered.connect(show_about)

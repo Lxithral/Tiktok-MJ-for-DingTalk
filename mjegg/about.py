@@ -10,7 +10,7 @@ from .paths import resource_path
 from . import theme
 
 APP_NAME = "钉钉 MJ 彩蛋"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.0.1"
 DEVELOPER = "L'xithral"
 REPO_URL = "https://github.com/Lxithral/Tiktok-MJ-for-DingTalk"
 
