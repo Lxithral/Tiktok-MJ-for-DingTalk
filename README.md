@@ -35,7 +35,7 @@ pip install pyinstaller
 python -m PyInstaller --noconfirm --clean --noconsole --onefile --icon assets/app.ico --add-data "assets;assets" --name MJDingTalk main.py
 ```
 
-产物为 `dist\MJDingTalk.exe`（单文件、无终端窗口，约 78MB）。素材打包在 exe 内部；**config.json 和日志生成在 exe 旁边**（首次运行自动创建），想改配置就改 exe 旁边那份。onefile 首次启动需解压，等 1~3 秒属正常；如被杀软拦截，添加信任即可。
+产物为 `dist\MJDingTalk.exe`（单文件、无终端窗口，约 78MB），同时打包 `dist\MJDingTalk-green-<版本>.zip`（内含 exe + config.json，解压即用）。素材打包在 exe 内部；**config.json 和日志生成在 exe 旁边**（首次运行自动创建），想改配置就改 exe 旁边那份。onefile 首次启动需解压，等 1~3 秒属正常；如被杀软拦截，添加信任即可。发新版本时记得更新 `build_exe.bat` 顶部的 `VERSION` 变量。
 
 ## 触发规则（与原项目一致）
 
