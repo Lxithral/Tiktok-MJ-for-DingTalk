@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """启动 splash: 程序启动时在屏幕中央短暂渐显应用图标与版本号."""
+import logging
+
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QPoint
 from PyQt6.QtGui import QCursor, QGuiApplication
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGraphicsOpacityEffect
 
 from .about import APP_NAME, APP_VERSION
 from . import theme
+
+log = logging.getLogger("mjegg.splash")
 
 
 class Splash(QWidget):
@@ -59,7 +63,8 @@ class Splash(QWidget):
         self._anim.setStartValue(0.0)
         self._anim.setEndValue(1.0)
         self._anim.start()
-        QTimer.singleShot(1300, self._fade_out)
+        log.info("splash: 屏幕中央显示图标 %s", self.geometry())
+        QTimer.singleShot(2000, self._fade_out)
         return self
 
     def _fade_out(self):
