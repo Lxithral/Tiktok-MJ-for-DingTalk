@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "process_names": [
+    "DingTalk.exe"
+  ],
+  "input_control_class": "im_chat::InputRichTextEdit",
+  "poll_interval_ms": 60,
+  "send_key_window_s": 0.8,
+  "match_window_s": 1.2,
+  "cooldown_s": 4.0,
+  "overlay_height_ratio": 0.85,
+  "volume": 1.0,
+  "watchdog_s": 30,
+  "ignore_injected_keys": true,
+  "fallback_vk_buffer": true
+}

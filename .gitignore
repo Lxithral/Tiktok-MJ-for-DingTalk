@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# 构建产物
+build/
+dist/
+*.spec
+
+# 运行时生成
+*.log
+config.json.bak
+
+# 测试截图(保留 README 引用的两张)
+poc/@AutomationLog.txt
+poc/*.png
+!poc/render_fixed_t16.png
+!poc/about_toggled.png
+assets_src/*.png
