@@ -47,6 +47,9 @@ class MjAccessibilityService : AccessibilityService() {
     /**
      * 命中候选后开启的高频轮询。
      * 只在候选有效期内运行(通常不到一两秒), 之后自动停, 不做无谓开销。
+     *
+     * 调度只由 [ensurePendingPolling] 和本 Runnable 的尾部两处负责, 二者都先
+     * removeCallbacks 再 post, 保证同一时刻只有一条待执行的链, 不会翻倍跑。
      */
     private val pendingPoller = object : Runnable {
         override fun run() {
@@ -56,7 +59,9 @@ class MjAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun startPendingPolling() {
+    /** 确保轮询链在跑(幂等)。只在事件回调里调用, 不要在 pollFocusedInput 里调, 否则会重复排程。 */
+    private fun ensurePendingPolling() {
+        if (!trigger.hasPending()) return
         mainHandler.removeCallbacks(pendingPoller)
         mainHandler.postDelayed(pendingPoller, PENDING_POLL_MS)
     }
@@ -140,7 +145,7 @@ class MjAccessibilityService : AccessibilityService() {
 
         if (text != null) {
             trigger.onInputText(text)
-            if (trigger.hasPending()) startPendingPolling()
+            if (trigger.hasPending()) ensurePendingPolling()
         } else {
             // 事件里读不到文本: 直接去读焦点输入框
             pollFocusedInput("TEXT_CHANGED 兜底")
@@ -173,7 +178,8 @@ class MjAccessibilityService : AccessibilityService() {
         EggDebug.noteInputNode(focus.className?.toString() ?: "?", true, raw != null, raw)
         if (raw == null && !trigger.hasPending()) return
         trigger.onInputText(raw ?: "")
-        if (trigger.hasPending()) startPendingPolling()
+        // 注意: 这里**不要**再调 ensurePendingPolling —— 轮询链的续期由 pendingPoller
+        // 自己的尾部负责, 两处都排程会让同一时刻存在两条链, 实际频率翻倍。
         if (reason == "轮询" && raw != null && raw.isNotEmpty()) {
             EggDebug.log("轮询", "焦点输入框=$reason 文本=${quote(raw)}")
         }

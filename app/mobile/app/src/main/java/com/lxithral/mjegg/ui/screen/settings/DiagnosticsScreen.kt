@@ -48,6 +48,7 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
             delay(1000)
         }
     }
+    val enabledInSettings = MjAccessibilityService.isEnabledInSettings(context)
     val lines = EggDebug.lines
     val nodes = EggDebug.inputNodes
 
@@ -73,7 +74,12 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 BasicComponent(
                     title = "无障碍服务",
-                    summary = if (connected) "已连接" else "未连接（先回主页开启）",
+                    summary = when {
+                        connected -> "已连接（正在收事件）"
+                        enabledInSettings -> "系统设置里已勾选, 但服务没连上 —— " +
+                                "去无障碍设置关掉再打开一次"
+                        else -> "未开启（先回主页点「去开启无障碍服务」）"
+                    },
                 )
                 BasicComponent(
                     title = "监控应用",

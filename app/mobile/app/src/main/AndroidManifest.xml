@@ -29,10 +29,15 @@
           MJ 彩蛋无障碍服务:
           只读监听微信/QQ/钉钉的聊天输入框文本变化, 判断"用户自己发送了 mj"。
           不注入、不模拟点击、不自动发消息。
+
+          android:exported **必须为 true** —— 无障碍服务是由 system_server 从本应用
+          进程之外绑定的, 写成 false 会被系统拒绝绑定, 表现为"服务在设置里能勾上,
+          但永远不连接、一个事件都收不到"(实测踩坑: 三个客户端全部不触发就是这个原因)。
+          安全性由 android:permission=BIND_ACCESSIBILITY_SERVICE 保证, 只有系统能绑。
         -->
         <service
             android:name=".egg.MjAccessibilityService"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/accessibility_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
