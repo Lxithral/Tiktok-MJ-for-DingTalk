@@ -6,7 +6,11 @@
 
 - 用现成脚本：`app/desktop/poc/send_to_wechat.py <apk路径>`
 - 发文字（例如 push 完的提醒）：`python send_to_wechat.py --text "已 push"`
-- 原理：文件走剪贴板（`CF_HDROP`）+ `Ctrl+V` 粘贴成附件；文字直接按 Unicode 键输入。
+- **发中文一定要走剪贴板粘贴，不要逐字符 SendInput**：逐字符打中文会被微信的富文本
+  输入框丢字（标点后紧跟的字常丢），并且把全角标点重复一遍（`，`→`，,`、`。`→`。。`、
+  `「`→`「「`）。脚本里已改成 `CF_UNICODETEXT` + `Ctrl+V`，并**读回输入框内容做校验**，
+  不一致就清空重试，最多 3 次，避免发出乱码。
+- 原理：文件走剪贴板（`CF_HDROP`）+ `Ctrl+V` 粘贴成附件；文字走 `CF_UNICODETEXT` + `Ctrl+V`。
   切到「文件传输助手」会话后回车发送。走真实用户操作路径，不碰微信私有接口。
 - 验证方式：截图看会话里出现 `<文件名> <大小>`，且不再显示「上传中」。
 - 注意：`CF_HDROP` 相关的 Win32 句柄（`GlobalAlloc` / `GlobalLock` /

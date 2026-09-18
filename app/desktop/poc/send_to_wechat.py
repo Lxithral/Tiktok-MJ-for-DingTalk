@@ -32,6 +32,7 @@ except Exception:
     pass
 
 CF_HDROP = 15
+CF_UNICODETEXT = 13
 GMEM_MOVEABLE = 0x0002
 
 VK_CONTROL = 0x11
@@ -79,6 +80,24 @@ kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
 
 
 # ---------- 剪贴板 ----------
+def _clipboard_put(fmt, payload):
+    """把一段字节放进剪贴板指定格式。"""
+    if not user32.OpenClipboard(None):
+        raise RuntimeError("打不开剪贴板")
+    try:
+        user32.EmptyClipboard()
+        h = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(payload))
+        if not h:
+            raise RuntimeError("GlobalAlloc 失败")
+        p = kernel32.GlobalLock(h)
+        ctypes.memmove(p, payload, len(payload))
+        kernel32.GlobalUnlock(h)
+        if not user32.SetClipboardData(fmt, h):
+            raise RuntimeError("SetClipboardData 失败")
+    finally:
+        user32.CloseClipboard()
+
+
 def set_clipboard_files(paths):
     """把一组文件放进剪贴板(CF_HDROP), 效果等同于在资源管理器里 Ctrl+C。"""
     files = "\0".join(os.path.abspath(p) for p in paths) + "\0\0"
@@ -88,22 +107,16 @@ def set_clipboard_files(paths):
     df.pFiles = ctypes.sizeof(DROPFILES)
     df.fWide = True
     header = ctypes.string_at(ctypes.byref(df), ctypes.sizeof(df))
-    blob = header + payload
+    _clipboard_put(CF_HDROP, header + payload)
 
-    if not user32.OpenClipboard(None):
-        raise RuntimeError("打不开剪贴板")
-    try:
-        user32.EmptyClipboard()
-        h = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(blob))
-        if not h:
-            raise RuntimeError("GlobalAlloc 失败")
-        p = kernel32.GlobalLock(h)
-        ctypes.memmove(p, blob, len(blob))
-        kernel32.GlobalUnlock(h)
-        if not user32.SetClipboardData(CF_HDROP, h):
-            raise RuntimeError("SetClipboardData 失败")
-    finally:
-        user32.CloseClipboard()
+
+def set_clipboard_text(text):
+    """把一段文字放进剪贴板(CF_UNICODETEXT).
+
+    发中文**必须走粘贴**: 逐字符 SendInput 打中文会被微信的富文本输入框
+    丢字、并且把全角标点重复一遍(实测踩坑)。粘贴是原子的, 不会出这种问题。
+    """
+    _clipboard_put(CF_UNICODETEXT, text.encode("utf-16-le") + b"\x00\x00")
 
 
 # ---------- 输入 ----------
@@ -264,30 +277,55 @@ def main():
         edit = edits[0]
         print("切换后会话: %r" % (edit.Name or ""))
 
-    # ---------- 文字模式 ----------
+    # ---------- 文字模式(走剪贴板粘贴 + 读回校验) ----------
     if args.text is not None:
         r = edit.BoundingRectangle
         click((r.left + r.right) // 2, (r.top + r.bottom) // 2)
         time.sleep(0.5)
+
+        def read_input():
+            w = uia.ControlFromHandle(hwnd)
+            es = find_by_class(w, "mmui::ChatInputField")
+            if not es:
+                return None
+            try:
+                return es[0].GetValuePattern().Value
+            except Exception:
+                return None
+
         # 先清掉可能残留的草稿
         for _ in range(30):
             tap(0x08)
-        time.sleep(0.2)
-        print("输入文字: %s" % args.text)
-        type_text(args.text)
-        time.sleep(0.8)
+        time.sleep(0.3)
+
+        want = args.text
+        ok = False
+        for attempt in range(1, 4):
+            set_clipboard_text(want)
+            paste()
+            time.sleep(1.2)
+            got = read_input()
+            print("  第 %d 次粘贴后输入框: %r" % (attempt, got))
+            if got is not None and got.strip() == want.strip():
+                ok = True
+                break
+            # 不一致就清空重来(全角标点/长度差异都算)
+            for _ in range(len(got or "") + 40):
+                tap(0x08)
+            time.sleep(0.4)
+        if not ok:
+            print("粘贴校验未通过, 中止发送(避免发出乱码)")
+            return 1
+
         if args.no_send:
-            print("已输入, 按 --no-send 要求不发送")
+            print("已粘贴并校验通过, 按 --no-send 要求不发送")
             return 0
         tap(VK_RETURN)
         time.sleep(1.5)
         if args.shot:
             ImageGrab.grab().save(args.shot)
             print("已截图 %s" % args.shot)
-        win = uia.ControlFromHandle(hwnd)
-        edits = find_by_class(win, "mmui::ChatInputField")
-        if edits:
-            print("发送后输入框: %r" % (edits[0].GetValuePattern().Value,))
+        print("发送后输入框: %r" % (read_input(),))
         return 0
 
     if args.path is None:
