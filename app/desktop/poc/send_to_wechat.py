@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
-"""把文件发到微信「文件传输助手」—— 手机取包用。
+"""把文件或一段文字发到微信「文件传输助手」—— 手机取包/收提醒用。
 
-原理: 把文件放进剪贴板(CF_HDROP), 切到「文件传输助手」会话, 在输入框里 Ctrl+V
-粘贴成附件, 再回车发送。不依赖微信的任何私有接口, 走的是真实用户操作路径。
+原理: 文件走剪贴板(CF_HDROP) + Ctrl+V 粘贴成附件; 文字直接按 Unicode 键输入。
+两者都切到「文件传输助手」会话后回车发送。不依赖微信的任何私有接口,
+走的是真实用户操作路径。
 
 用法:
   python send_to_wechat.py <文件路径> [--chat 文件传输助手] [--no-send]
-  python send_to_wechat.py --check            # 只看当前会话是不是目标会话
+  python send_to_wechat.py --text "已 push"          # 发一段文字
+  python send_to_wechat.py --check                   # 只看当前会话是不是目标会话
 
 注意: 需要微信已登录并保持窗口可用; 发送过程会短暂抢焦点。
 """
@@ -208,6 +210,7 @@ def find_by_class(node, needle, depth=0, hits=None, max_depth=30):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("path", nargs="?", help="要发送的文件")
+    ap.add_argument("--text", default=None, help="要发送的一段文字(与文件二选一)")
     ap.add_argument("--chat", default="文件传输助手", help="目标会话名")
     ap.add_argument("--check", action="store_true", help="只检查当前会话")
     ap.add_argument("--no-send", action="store_true", help="粘贴后不按回车")
@@ -261,8 +264,34 @@ def main():
         edit = edits[0]
         print("切换后会话: %r" % (edit.Name or ""))
 
+    # ---------- 文字模式 ----------
+    if args.text is not None:
+        r = edit.BoundingRectangle
+        click((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+        time.sleep(0.5)
+        # 先清掉可能残留的草稿
+        for _ in range(30):
+            tap(0x08)
+        time.sleep(0.2)
+        print("输入文字: %s" % args.text)
+        type_text(args.text)
+        time.sleep(0.8)
+        if args.no_send:
+            print("已输入, 按 --no-send 要求不发送")
+            return 0
+        tap(VK_RETURN)
+        time.sleep(1.5)
+        if args.shot:
+            ImageGrab.grab().save(args.shot)
+            print("已截图 %s" % args.shot)
+        win = uia.ControlFromHandle(hwnd)
+        edits = find_by_class(win, "mmui::ChatInputField")
+        if edits:
+            print("发送后输入框: %r" % (edits[0].GetValuePattern().Value,))
+        return 0
+
     if args.path is None:
-        print("没有指定要发送的文件")
+        print("没有指定要发送的文件(或用 --text 发文字)")
         return 1
     path = os.path.abspath(args.path)
     if not os.path.exists(path):
