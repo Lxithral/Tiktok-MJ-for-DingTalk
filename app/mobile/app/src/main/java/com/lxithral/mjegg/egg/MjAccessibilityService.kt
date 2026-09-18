@@ -133,14 +133,17 @@ class MjAccessibilityService : AccessibilityService() {
         val src = safeSource(e)
         val srcEditable = src != null && isEditableNode(src)
         val fromSource = if (srcEditable) src?.text?.toString() else null
-        // 空列表 = 客户端没填, 不能当空串; 非空列表才可用
-        val fromEvent = if (e.text.isNotEmpty()) e.text.joinToString("") else null
+        // 空列表 = 客户端没填, 不能当空串; 非空列表才可用。
+        // filterNotNull: 列表里理论上可能出现 null 元素, 不过滤的话 joinToString 会
+        // 拼出字面量 "null", 把文本污染成 "nullmj" 之类。
+        val fromEvent = if (e.text.isNotEmpty()) e.text.filterNotNull().joinToString("") else null
 
         val text = fromSource ?: fromEvent
         EggDebug.log(
             "文本变化",
             "$pkg source=${if (src == null) "null" else src.className} 可编辑=$srcEditable " +
-                    "source文本=${quote(fromSource)} event文本=${quote(fromEvent)}"
+                    "source文本=${EggDebug.escape(fromSource)} event文本=${EggDebug.escape(fromEvent)} " +
+                    "归一化后=${EggDebug.escape(text?.let { Matcher.normalize(it) })}"
         )
 
         if (text != null) {
@@ -181,7 +184,7 @@ class MjAccessibilityService : AccessibilityService() {
         // 注意: 这里**不要**再调 ensurePendingPolling —— 轮询链的续期由 pendingPoller
         // 自己的尾部负责, 两处都排程会让同一时刻存在两条链, 实际频率翻倍。
         if (reason == "轮询" && raw != null && raw.isNotEmpty()) {
-            EggDebug.log("轮询", "焦点输入框=$reason 文本=${quote(raw)}")
+            EggDebug.log("轮询", "焦点输入框=$reason 文本=${EggDebug.escape(raw)} 归一化后=${EggDebug.escape(Matcher.normalize(raw))}")
         }
     }
 
@@ -267,8 +270,6 @@ class MjAccessibilityService : AccessibilityService() {
 
         /** 发送类按钮的文案(仅作为"点发送按钮"这条快速通道, 不是必须的)。 */
         private val SEND_LABELS = setOf("发送", "Send", "send", "发送消息")
-
-        private fun quote(s: String?): String = if (s == null) "null" else "\"$s\""
 
         /** 服务是否真的处于连接状态(比查设置更准)。 */
         fun isConnected(): Boolean = instance != null

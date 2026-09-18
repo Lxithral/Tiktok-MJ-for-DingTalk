@@ -34,11 +34,36 @@ object EggDebug {
         while (lines.size > MAX_LINES) lines.removeAt(0)
     }
 
+    /**
+     * 把文本转成"看得见"的形式写进日志。
+     *
+     * 关键作用: 把不可见字符(零宽字符/BOM/不换行空格/控制符)转义成 `\uXXXX`。
+     * 否则日志里 `"mj"` 和 `"mj\u200B"` 长得一模一样, 根本查不出为什么匹配失败。
+     */
+    fun escape(s: String?): String {
+        if (s == null) return "null"
+        val sb = StringBuilder("\"")
+        for (ch in s) {
+            val c = ch.code
+            when {
+                ch == '\n' -> sb.append("\\n")
+                ch == '\r' -> sb.append("\\r")
+                ch == '\t' -> sb.append("\\t")
+                c < 0x20 || c == 0x7F ||
+                        c in 0x200B..0x200F || c == 0x2060 || c == 0xFEFF || c == 0x00A0 ->
+                    sb.append("\\u%04X".format(c))
+                else -> sb.append(ch)
+            }
+        }
+        sb.append('"')
+        return sb.toString()
+    }
+
     /** 记录一次输入框节点的观察结果(同类名只记第一条, 避免刷屏)。 */
     fun noteInputNode(className: String, editable: Boolean, textReadable: Boolean, text: String?) {
         val key = "$className|$editable|$textReadable"
         if (!seenClasses.add(key)) return
-        val desc = "类名=$className  可编辑=$editable  文本可读=$textReadable  当前=${text?.let { "\"$it\"" } ?: "null"}"
+        val desc = "类名=$className  可编辑=$editable  文本可读=$textReadable  当前=${escape(text)}"
         inputNodes.add(desc)
         while (inputNodes.size > 40) inputNodes.removeAt(0)
         log("输入框", desc)

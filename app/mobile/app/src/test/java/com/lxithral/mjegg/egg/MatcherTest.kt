@@ -53,4 +53,39 @@ class MatcherTest {
             assertEquals("规则表不一致: $input", expected, Matcher.matches(input))
         }
     }
+
+    // ---------- 输入清洗(Android 特有: 富文本输入框可能混入不可见字符) ----------
+
+    @Test
+    fun `零宽字符被剥掉后仍能命中`() {
+        // 微信/QQ 的富文本输入框可能插入 ZWSP/BOM, trim() 剥不掉它们
+        assertTrue("零宽空格", Matcher.matches("mj\u200B"))
+        assertTrue("BOM", Matcher.matches("\uFEFFmj"))
+        assertTrue("中间零宽", Matcher.matches("m\u200Bj"))
+        assertTrue("不换行空格", Matcher.matches("mj\u00A0"))
+        assertTrue("词连接符", Matcher.matches("mj\u2060"))
+        assertTrue("零宽连接符", Matcher.matches("mj\u200D"))
+    }
+
+    @Test
+    fun `剥掉不可见字符后仍然不放过非法组合`() {
+        assertFalse(Matcher.matches("amj\u200B"))
+        assertFalse(Matcher.matches("mjm\uFEFF"))
+        assertFalse(Matcher.matches("mjx\u00A0"))
+    }
+
+    @Test
+    fun `归一化只去不可见字符, 不动可见内容`() {
+        assertEquals("mj", Matcher.normalize("  mj\u200B  "))
+        assertEquals("mj mj", Matcher.normalize("mj mj"))
+        assertEquals("", Matcher.normalize("\u200B\uFEFF"))
+        assertEquals("", Matcher.normalize(null))
+    }
+
+    @Test
+    fun `归一化不会把带空格的输入变成命中`() {
+        // 插入空格属于"内容变了", 与桌面版行为一致: 不命中
+        assertFalse(Matcher.matches("mj mj"))
+        assertFalse(Matcher.matches("m j"))
+    }
 }
