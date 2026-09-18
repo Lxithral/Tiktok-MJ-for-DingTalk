@@ -204,7 +204,12 @@ app/desktop/
 ├── assets/            # 带 alpha 的动画素材 + 音效 + 头像 + 图标
 ├── assets_src/        # 原始双画面蒙版源视频
 ├── dist/MJDingTalk.exe
-└── poc/               # POC 与测试脚本(含 UIA 探测、取证、端到端测试)
+└── poc/               # POC 与测试脚本
+    ├── probe_*.py            # UIA 树/输入框探测
+    ├── keylog.py             # 按键取证(区分屏幕键盘与宏工具注入)
+    ├── test_trigger.py       # 端到端触发测试
+    ├── tabtip_e2e.py         # 触摸键盘端到端测试
+    └── send_to_wechat.py     # 把文件发到微信「文件传输助手」(发布 APK 用)
 ```
 
 ## 致谢与许可

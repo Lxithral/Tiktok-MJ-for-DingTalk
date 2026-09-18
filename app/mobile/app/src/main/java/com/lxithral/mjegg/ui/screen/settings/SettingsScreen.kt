@@ -21,12 +21,13 @@ import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 
-/** 设置主页: 外观入口 + 无障碍状态 + 关于。 */
+/** 设置主页: 外观入口 + 无障碍状态 + 诊断 + 关于。 */
 @Composable
 fun SettingsScreen(
     settings: SettingsStore,
     isDark: Boolean,
     onOpenTheme: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
 ) {
     val context = LocalContext.current
     @Suppress("UNUSED_EXPRESSION")
@@ -77,6 +78,15 @@ fun SettingsScreen(
                     title = "打开系统无障碍设置",
                     summary = "在「已安装的服务」里找到 MJ 彩蛋",
                     onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
+                )
+            }
+
+            SmallTitle("排查")
+            Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                ArrowPreference(
+                    title = "诊断",
+                    summary = "看目标应用发来的事件、读到的文本、输入框节点信息",
+                    onClick = onOpenDiagnostics,
                 )
             }
 

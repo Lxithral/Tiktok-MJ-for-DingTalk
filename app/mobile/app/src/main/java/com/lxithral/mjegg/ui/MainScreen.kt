@@ -17,6 +17,7 @@ import com.lxithral.mjegg.ui.navigation.BottomBar
 import com.lxithral.mjegg.ui.screen.feature.FeatureScreen
 import com.lxithral.mjegg.ui.screen.home.HomeScreen
 import com.lxithral.mjegg.ui.screen.module.ModuleScreen
+import com.lxithral.mjegg.ui.screen.settings.DiagnosticsScreen
 import com.lxithral.mjegg.ui.screen.settings.SettingsScreen
 import com.lxithral.mjegg.ui.screen.settings.ThemeSettingsScreen
 import com.lxithral.mjegg.ui.theme.resolveIsDark
@@ -35,8 +36,9 @@ fun MainScreen(settings: SettingsStore) {
     val backdrop = rememberLayerBackdrop()
     val isDark = resolveIsDark(settings.colorMode)
 
-    // 二级页: 主题设置。用 rememberSaveable 保证旋屏后仍在原页
+    // 二级页: 主题设置 / 诊断。用 rememberSaveable 保证旋屏后仍在原页
     var showTheme by rememberSaveable { mutableStateOf(false) }
+    var showDiagnostics by rememberSaveable { mutableStateOf(false) }
     // 用递增 key 强制重建页面, 让"重开应用级"的设置(如 AMOLED)立即重绘
     val themeKey = remember(settings.colorMode, settings.monet, settings.keyColor) {
         "${settings.colorMode}-${settings.monet}-${settings.keyColor}"
@@ -44,6 +46,10 @@ fun MainScreen(settings: SettingsStore) {
 
     if (showTheme) {
         ThemeSettingsScreen(settings = settings, onBack = { showTheme = false })
+        return
+    }
+    if (showDiagnostics) {
+        DiagnosticsScreen(settings = settings, onBack = { showDiagnostics = false })
         return
     }
 
@@ -72,6 +78,7 @@ fun MainScreen(settings: SettingsStore) {
                         settings = settings,
                         isDark = isDark,
                         onOpenTheme = { showTheme = true },
+                        onOpenDiagnostics = { showDiagnostics = true },
                     )
                 }
             }

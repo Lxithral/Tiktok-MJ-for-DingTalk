@@ -19,7 +19,22 @@ import com.lxithral.mjegg.platform.SettingsStore
  * 职责: 只读监听 微信 / QQ / 钉钉 的聊天输入框文本, 判断"用户自己发送了 mj",
  * 然后播一遍蜘蛛侠动画。**不注入按键、不模拟点击、不自动发消息**。
  *
- * 判据见 [EggTrigger]。
+ * ## 判据
+ *
+ *   输入框命中触发词 + 输入框随后变空  ⇒  判定用户发送了消息
+ *
+ * 这条判据**不关心用户是怎么发的** —— 点客户端自带的发送按钮、按输入法的发送键、
+ * 或者按物理回车, 消息发出后输入框都会空掉。所以不需要单独去识别"发送按钮"。
+ *
+ * ## 为什么必须"事件 + 轮询"两条腿走路
+ *
+ * 1. `TYPE_VIEW_TEXT_CHANGED` 的 `event.source` **在很多机型/客户端上是 null**
+ *    (早期版本直接 `source ?: return`, 结果三个客户端全都不触发 —— 实测踩坑)。
+ *    所以文本来源按 `source.text` → `event.text` → 焦点输入框 三级回退。
+ * 2. `event.text` 是 List: **空列表表示"客户端没填", 不能当成空字符串**,
+ *    否则每次事件都会被误判成"输入框已清空"。
+ * 3. 有些客户端根本不在清空输入框时派发事件, 所以命中候选后要**主动轮询**
+ *    焦点输入框(与电脑版 60ms 轮询同一个思路), 靠它观测"被清空"这一瞬间。
  */
 class MjAccessibilityService : AccessibilityService() {
 
@@ -27,56 +42,39 @@ class MjAccessibilityService : AccessibilityService() {
     private val trigger = EggTrigger()
     private var overlay: EggOverlay? = null
     private var lastFireAt = 0L
+    private var lastPollAt = 0L
 
+    /**
+     * 命中候选后开启的高频轮询。
+     * 只在候选有效期内运行(通常不到一两秒), 之后自动停, 不做无谓开销。
+     */
+    private val pendingPoller = object : Runnable {
+        override fun run() {
+            if (!trigger.hasPending()) return
+            pollFocusedInput("轮询")
+            if (trigger.hasPending()) mainHandler.postDelayed(this, PENDING_POLL_MS)
+        }
+    }
+
+    private fun startPendingPolling() {
+        mainHandler.removeCallbacks(pendingPoller)
+        mainHandler.postDelayed(pendingPoller, PENDING_POLL_MS)
+    }
+
+    // ---------- 生命周期 ----------
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         overlay = EggOverlay(this)
         trigger.onFire = { reason -> fire(reason) }
         trigger.reset()
+        EggDebug.log("服务", "已连接; 请求的事件类型=${serviceInfo?.eventTypes?.let { "0x%X".format(it) } ?: "?"}")
         Log.i(TAG, "无障碍服务已连接")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val e = event ?: return
-        val settings = SettingsStore.get(this)
-        if (!settings.eggEnabled) return
-
-        val pkg = e.packageName?.toString() ?: return
-        if (pkg !in settings.enabledPackages()) return
-
-        when (e.eventType) {
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
-                val src = e.source ?: return
-                if (!isEditable(src)) return
-                val text = src.text?.toString() ?: e.text?.joinToString("").orEmpty()
-                trigger.onInputText(text)
-            }
-
-            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
-                val src = e.source ?: return
-                val label = (src.text ?: src.contentDescription)?.toString()?.trim()
-                if (label != null && label in SEND_LABELS) trigger.onSendClick()
-            }
-
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                // 兜底: 有些客户端不派发 TEXT_CHANGED(或只在内容变化时派发),
-                // 这里仅在"已有候选命中"时才去读焦点输入框, 平时零开销。
-                if (trigger.hasPending()) confirmByFocusedInput()
-            }
-        }
-    }
-
     override fun onInterrupt() {
+        EggDebug.log("服务", "被中断")
         Log.i(TAG, "无障碍服务被中断")
-    }
-
-    /** 手动播放一次(供 App 内"播放测试"按钮使用), 绕过冷却。 */
-    fun testPlay() {
-        mainHandler.post {
-            overlay?.play() ?: Log.w(TAG, "overlay 未就绪, 无法测试播放")
-        }
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -90,6 +88,7 @@ class MjAccessibilityService : AccessibilityService() {
     }
 
     private fun teardown() {
+        mainHandler.removeCallbacks(pendingPoller)
         if (instance === this) instance = null
         trigger.onFire = null
         trigger.reset()
@@ -97,49 +96,173 @@ class MjAccessibilityService : AccessibilityService() {
         overlay = null
     }
 
-    // ---------- 内部 ----------
-    private fun confirmByFocusedInput() {
-        try {
-            val root = rootInActiveWindow ?: return
-            val focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return
-            if (!isEditable(focus)) return
-            trigger.onInputText(focus.text?.toString())
-        } catch (t: Throwable) {
-            Log.d(TAG, "读取焦点输入框失败: ${t.message}")
+    // ---------- 事件 ----------
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val e = event ?: return
+        val settings = SettingsStore.get(this)
+        if (!settings.eggEnabled) return
+
+        val pkg = e.packageName?.toString() ?: return
+        if (pkg !in settings.enabledPackages()) return
+
+        when (e.eventType) {
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> onTextChanged(e, pkg)
+
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                val label = labelOf(e)
+                if (label != null && label in SEND_LABELS) {
+                    EggDebug.log("事件", "$pkg 点击了发送按钮 \"$label\"")
+                    trigger.onSendClick()
+                }
+            }
+
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                // 没有候选时也低频读一次: 兜住"清空输入框不派发 TEXT_CHANGED"的客户端
+                pollFocusedInputThrottled("内容/窗口变化")
+            }
         }
     }
 
-    private fun isEditable(node: AccessibilityNodeInfo): Boolean {
-        if (node.isEditable) return true
-        val cls = node.className?.toString().orEmpty()
-        return cls.contains("EditText", ignoreCase = true) ||
-                cls.contains("RichEdit", ignoreCase = true)
+    private fun onTextChanged(e: AccessibilityEvent, pkg: String) {
+        val src = safeSource(e)
+        val srcEditable = src != null && isEditableNode(src)
+        val fromSource = if (srcEditable) src?.text?.toString() else null
+        // 空列表 = 客户端没填, 不能当空串; 非空列表才可用
+        val fromEvent = if (e.text.isNotEmpty()) e.text.joinToString("") else null
+
+        val text = fromSource ?: fromEvent
+        EggDebug.log(
+            "文本变化",
+            "$pkg source=${if (src == null) "null" else src.className} 可编辑=$srcEditable " +
+                    "source文本=${quote(fromSource)} event文本=${quote(fromEvent)}"
+        )
+
+        if (text != null) {
+            trigger.onInputText(text)
+            if (trigger.hasPending()) startPendingPolling()
+        } else {
+            // 事件里读不到文本: 直接去读焦点输入框
+            pollFocusedInput("TEXT_CHANGED 兜底")
+        }
     }
 
+    // ---------- 读取输入框 ----------
+    private fun pollFocusedInputThrottled(reason: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPollAt < IDLE_POLL_THROTTLE_MS) return
+        lastPollAt = now
+        pollFocusedInput(reason)
+    }
+
+    /**
+     * 读当前焦点输入框并喂给状态机。
+     *
+     * 两条安全约束:
+     * - 读不到文本(null)且当前没有候选 -> 直接忽略。**绝不能把 null 当成"空字符串"**,
+     *   否则每次轮询都会误判成"输入框被清空"。
+     * - 焦点节点不是可编辑控件时不上报(例如焦点跑到列表上), 避免误判。
+     */
+    private fun pollFocusedInput(reason: String) {
+        val focus = focusedInputNode() ?: return
+        if (!isEditableNode(focus)) {
+            EggDebug.noteInputNode(focus.className?.toString() ?: "?", false, false, null)
+            return
+        }
+        val raw = focus.text?.toString()
+        EggDebug.noteInputNode(focus.className?.toString() ?: "?", true, raw != null, raw)
+        if (raw == null && !trigger.hasPending()) return
+        trigger.onInputText(raw ?: "")
+        if (trigger.hasPending()) startPendingPolling()
+        if (reason == "轮询" && raw != null && raw.isNotEmpty()) {
+            EggDebug.log("轮询", "焦点输入框=$reason 文本=${quote(raw)}")
+        }
+    }
+
+    private fun focusedInputNode(): AccessibilityNodeInfo? = try {
+        rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+    } catch (t: Throwable) {
+        Log.d(TAG, "读取焦点输入框失败: ${t.message}")
+        null
+    }
+
+    private fun safeSource(e: AccessibilityEvent): AccessibilityNodeInfo? = try {
+        e.source
+    } catch (t: Throwable) {
+        null
+    }
+
+    private fun labelOf(e: AccessibilityEvent): String? {
+        val src = safeSource(e)
+        val raw = src?.text ?: src?.contentDescription
+        return raw?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * 判断是否"可编辑的输入框"。
+     *
+     * 只靠 `isEditable` 不够 —— 不少客户端自定义 EditText 时不会设置这个属性,
+     * 所以再加两条兜底: 类名含 EditText / RichEdit, 或者节点支持 ACTION_SET_TEXT。
+     */
+    private fun isEditableNode(node: AccessibilityNodeInfo): Boolean {
+        if (node.isEditable) return true
+        val cls = node.className?.toString().orEmpty()
+        if (cls.contains("EditText", ignoreCase = true) ||
+            cls.contains("RichEdit", ignoreCase = true) ||
+            cls.contains("EditText", ignoreCase = true)
+        ) {
+            return true
+        }
+        val actions = node.actionList ?: return false
+        return actions.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }
+    }
+
+    // ---------- 触发 ----------
     private fun fire(reason: String) {
         val settings = SettingsStore.get(this)
         if (!settings.eggEnabled) return
         val now = SystemClock.elapsedRealtime()
         val cooldown = settings.cooldownSeconds.coerceIn(0, 60) * 1000L
         if (now - lastFireAt < cooldown) {
-            Log.i(TAG, "冷却中, 忽略触发: $reason")
+            EggDebug.log("触发", "冷却中, 忽略: $reason")
             return
         }
         lastFireAt = now
+        EggDebug.log("触发", reason)
         Log.i(TAG, "触发彩蛋: $reason")
-        mainHandler.post { overlay?.play() ?: Log.w(TAG, "overlay 未就绪") }
+        mainHandler.post {
+            val ok = overlay?.play() ?: false
+            if (!ok) EggDebug.log("触发", "播放失败(overlay 未就绪或素材解码失败)")
+        }
+    }
+
+    /** 手动播放一次(供 App 内"播放测试"按钮使用), 绕过冷却。 */
+    fun testPlay() {
+        EggDebug.log("测试", "手动播放")
+        mainHandler.post {
+            val ok = overlay?.play() ?: false
+            if (!ok) EggDebug.log("测试", "播放失败(overlay 未就绪或素材解码失败)")
+        }
     }
 
     companion object {
         private const val TAG = "MjEgg.Service"
+
+        /** 候选有效期内的高频轮询间隔(观测"输入框被清空"这一瞬间)。 */
+        private const val PENDING_POLL_MS = 80L
+
+        /** 无候选时的低频轮询节流(兜住不派发 TEXT_CHANGED 的客户端)。 */
+        private const val IDLE_POLL_THROTTLE_MS = 150L
 
         /** 服务连接后由 onServiceConnected 写入; 未连接为 null。 */
         @Volatile
         var instance: MjAccessibilityService? = null
             private set
 
-        /** 发送类按钮的文案(用于"点发送按钮"这条快速通道)。 */
+        /** 发送类按钮的文案(仅作为"点发送按钮"这条快速通道, 不是必须的)。 */
         private val SEND_LABELS = setOf("发送", "Send", "send", "发送消息")
+
+        private fun quote(s: String?): String = if (s == null) "null" else "\"$s\""
 
         /** 服务是否真的处于连接状态(比查设置更准)。 */
         fun isConnected(): Boolean = instance != null
