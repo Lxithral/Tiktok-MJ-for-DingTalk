@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MJ 彩蛋无障碍服务配置。
+
+  - 事件类型: 文本变化(打字/清空) + 窗口内容变化(部分客户端不派发 TEXT_CHANGED)
+              + 窗口状态变化(切换会话) + 点击(点"发送"按钮)
+  - 不限定 packageNames: 目标应用可在 App 内动态开关, 代码里再过滤
+  - 不申请 canPerformGestures / canRetrieveWindowContent 之外的任何能力, 全程只读
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeViewTextChanged|typeWindowContentChanged|typeWindowStateChanged|typeViewClicked"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagReportViewIds|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_description"
+    android:notificationTimeout="50"
+    android:summary="@string/accessibility_description" />

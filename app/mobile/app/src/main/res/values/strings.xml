@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MJ 彩蛋</string>
+    <string name="accessibility_label">MJ 彩蛋</string>
+    <string name="accessibility_description">在微信 / QQ / 钉钉里自己发送 mj、mjmj 时播放蜘蛛侠动画。只读取聊天输入框的文字，不注入、不自动发消息。</string>
+
+    <string name="tab_home">主页</string>
+    <string name="tab_feature">功能</string>
+    <string name="tab_module">模块</string>
+    <string name="tab_settings">设置</string>
+</resources>
