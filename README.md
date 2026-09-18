@@ -53,9 +53,33 @@ python main.py
 ```bash
 cd app/mobile
 ./gradlew :app:assembleRelease      # 产出 app/build/outputs/apk/release/app-release.apk
+./gradlew :app:testDebugUnitTest    # 19 个 JVM 单测(触发词规则 + 触发状态机)
 ```
 
 安装后在 App 里按提示开启**无障碍服务**即可。细节见 **[app/mobile/README.md](app/mobile/README.md)**。
+
+---
+
+## 验证情况
+
+**电脑版 —— 实机实测过**
+
+- ✅ 微信 4.x / QQ NT：真实发送 `mj`、`mjmj` 均触发，两段动画交替、自动关闭
+- ✅ Windows 触摸键盘：点 `m` `j` 回车发送同样触发
+- ✅ 键盘缓冲兜底路径：故意写错输入框类名后仍能触发
+- ✅ 负向用例：`amj`、`mjm`、退格删字、中文输入法"上屏"都不触发
+- ⚠️ 钉钉：本机钉钉需交互登录、起不来窗口，**没做真实回归**。
+  改从安装目录二进制验证 —— `MainFrame.dll` 中存在完整类名
+  `im_chat::InputRichTextEdit`（含源码路径 `DTIMChat-QT\src\InputChatBox\InputRichTextEdit.cpp`），
+  说明类名在当前版本仍有效；同构代码路径（精确类名 + Edit 控件）用微信搜索框跑通。
+
+**手机版 —— 未上真机**
+
+- ✅ 编译通过、release 已签名；APK 结构用 `aapt2` 逐项核对
+  （清单 / 服务声明 / 权限 / 事件掩码 / 素材完整性）
+- ✅ 核心判定逻辑有 19 个 JVM 单测覆盖
+- ⚠️ 触发链路的实机表现（各客户端输入框节点类型、事件派发频率、厂商 ROM 对无障碍服务的限制）
+  需要装机后验证
 
 ---
 
@@ -97,6 +121,7 @@ cd app/mobile
 - 电脑版需要**当前会话窗口在前台**且能定位到聊天输入框；钉钉独立聊天窗口同样支持。
 - QQ 是 Chromium 壳，默认不构建无障碍树。程序会在需要时"敲一下"让它暴露控件（`wake_a11y`）；万一失败会自动退回键盘缓冲兜底路径。
 - 客户端大版本更新可能改变控件类名，届时改 `config.json` 里的 `targets[].input_class` 即可（电脑版）。
+- 手机版若某客户端把输入框搬到 WebView 里承载，无障碍树可能读不到文本。
 - 纯只读检测，账号风控风险低，但请理性使用。
 
 ---
