@@ -24,6 +24,7 @@ import com.lxithral.mjegg.platform.SettingsStore
 class MjAccessibilityService : AccessibilityService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val trigger = EggTrigger()
     private var overlay: EggOverlay? = null
     private var lastFireAt = 0L
 
@@ -31,8 +32,8 @@ class MjAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         overlay = EggOverlay(this)
-        EggTrigger.onFire = { reason -> fire(reason) }
-        EggTrigger.reset()
+        trigger.onFire = { reason -> fire(reason) }
+        trigger.reset()
         Log.i(TAG, "无障碍服务已连接")
     }
 
@@ -49,20 +50,20 @@ class MjAccessibilityService : AccessibilityService() {
                 val src = e.source ?: return
                 if (!isEditable(src)) return
                 val text = src.text?.toString() ?: e.text?.joinToString("").orEmpty()
-                EggTrigger.onInputText(text)
+                trigger.onInputText(text)
             }
 
             AccessibilityEvent.TYPE_VIEW_CLICKED -> {
                 val src = e.source ?: return
                 val label = (src.text ?: src.contentDescription)?.toString()?.trim()
-                if (label != null && label in SEND_LABELS) EggTrigger.onSendClick()
+                if (label != null && label in SEND_LABELS) trigger.onSendClick()
             }
 
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 // 兜底: 有些客户端不派发 TEXT_CHANGED(或只在内容变化时派发),
                 // 这里仅在"已有候选命中"时才去读焦点输入框, 平时零开销。
-                if (EggTrigger.hasPending()) confirmByFocusedInput()
+                if (trigger.hasPending()) confirmByFocusedInput()
             }
         }
     }
@@ -90,8 +91,8 @@ class MjAccessibilityService : AccessibilityService() {
 
     private fun teardown() {
         if (instance === this) instance = null
-        EggTrigger.onFire = null
-        EggTrigger.reset()
+        trigger.onFire = null
+        trigger.reset()
         overlay?.dismiss()
         overlay = null
     }
@@ -102,7 +103,7 @@ class MjAccessibilityService : AccessibilityService() {
             val root = rootInActiveWindow ?: return
             val focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return
             if (!isEditable(focus)) return
-            EggTrigger.onInputText(focus.text?.toString())
+            trigger.onInputText(focus.text?.toString())
         } catch (t: Throwable) {
             Log.d(TAG, "读取焦点输入框失败: ${t.message}")
         }

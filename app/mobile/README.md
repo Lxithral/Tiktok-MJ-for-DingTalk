@@ -29,6 +29,25 @@ cd app/mobile
 - release 签名读 `~/.gradle/keystore.properties`；**该文件不存在时会自动回退到 debug 签名**，不会导致构建失败。
 - 有意关闭了 R8 混淆：无障碍服务由系统反射实例化，且无法在本机真机验证混淆结果，保守起见保持关闭。
 
+## 测试
+
+核心判定逻辑做成了**可在 JVM 上跑**的纯逻辑，不依赖真机：
+
+```bash
+./gradlew :app:testDebugUnitTest      # 19 个用例
+```
+
+- `MatcherTest`（6 个）：触发词规则，含 README 规则表逐条比对，确保与电脑版 `matcher.py` 行为一致。
+- `EggTriggerTest`（13 个）：触发状态机 —— 正常发送、逐字符输入、**退格删字不误触发**、
+  超时不触发、点发送按钮快速通道、连续两次发送、重复上报只触发一次。
+
+> 为此把 `EggTrigger` 从 `object` 改成了 `class`，时钟做成可注入的
+> （`EggTrigger(clock = { ... })`），这样状态机才不依赖 `android.os.SystemClock` 而能单测。
+> 这套测试确实抓到了一个真实缺陷：候选过期后没有被清掉，导致 `hasPending()` 永远为真，
+> 上层会对每个内容变化事件都去做一次昂贵的焦点输入框读取。
+>
+> 注意 AGP 9 下只有 `testDebugUnitTest`，没有 `testReleaseUnitTest`。
+
 ## 用法
 
 1. 安装 APK，打开 App。
@@ -137,7 +156,10 @@ app/mobile/
 
 ## 已知边界
 
-- **尚未在真机回归**：工程按 `./gradlew :app:assembleRelease` 可编译通过，但本机没有连接 Android 设备，触发链路的实机表现（各客户端输入框节点类型、事件派发频率）需要装机后验证。
+- **尚未在真机回归**：工程按 `./gradlew :app:assembleRelease` 可编译通过，核心判定逻辑有
+  JVM 单测覆盖，APK 结构（清单 / 服务声明 / 权限 / 素材）已用 `aapt2` 逐项核对，
+  但本机没有连接 Android 设备，触发链路的实机表现（各客户端输入框节点类型、事件派发频率）
+  需要装机后验证。
 - 微信 / QQ / 钉钉的**大版本更新**可能改变输入框的控件类型；由于检测用的是 `isEditable` 而不是硬编码资源 id，鲁棒性较好，但若某客户端改用 WebView 承载输入框，无障碍树可能读不到文本。
 - 部分厂商 ROM 会在息屏 / 后台限制无障碍服务，需要把本 App 加入电池优化白名单。
 - 纯只读检测：不注入按键、不模拟点击、不自动发消息。

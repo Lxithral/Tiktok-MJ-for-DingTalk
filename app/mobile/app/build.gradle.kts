@@ -100,4 +100,7 @@ dependencies {
     implementation(libs.miuix.preference)
     implementation(libs.miuix.icons)
     implementation(libs.miuix.blur)
+
+    // 纯 JVM 单元测试: 触发词规则与触发状态机(不需要真机)
+    testImplementation(libs.junit)
 }
