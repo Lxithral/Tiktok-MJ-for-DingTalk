@@ -34,6 +34,25 @@ ADB="D:/AAA_TOOLS/搞机工具箱10.1.0/adb.exe"
   清日志 `-a com.lxithral.mjegg.CLEAR_LOG`；App 内「诊断」页有逐环结论
 - uiautomator dump 对微信返回 407 字节空树属正常，别浪费时间重试
 
+**钉钉触发链路的关键事实**（2026-09-26 真机抓包定位，详见 mobile README v1.0.8）：
+- 钉钉清空输入框派发的光标事件，text 列表里装的是**占位 hint**（如 ["记录一下"]），
+  不是空列表（微信）也不是用户文本 —— 直接喂状态机会把候选撤销掉。
+  v1.0.8 修复：事件文本 == 节点 hintText ⇒ 按清空处理
+- 钉钉窗口树对无障碍同样基本不可读；uiautomator dump 时灵时不灵（0 字节/407 字节/正常），
+  不能依赖
+
+**ADB 驱动手机自动化的坑**（2026-09-26 钉钉验证实战）：
+- 输入框点击坐标依赖**键盘状态**：键盘收起时输入条在 y≈0.885H，键盘弹出时被顶到 y≈0.51H、
+  发送键在 y≈0.56H 右端 —— 点错坐标会把 `input text` 打进键盘，全程空转。
+  动手前先截屏看清键盘是否弹出
+- 启动 App 用 `monkey -p <包名> -c android.intent.category.LAUNCHER 1`，
+  别写死 Activity 组件名（钉钉手机版没有 .ui.LauncherUI，am start 直接报错静默失败）
+- `uiautomator dump` 可能返回 0 字节/空树，重试 2 次为限；输出 407 字节=微信式空树
+- 用户的无线 ADB 端口每次开关都变，掉线后扫 30000-50000 重连（配对端口也会出现在扫描结果里，
+  connect 报 offline 的就是配对端口，跳过）
+- 用户可能正通过**妙享桌面**从电脑投屏操作手机 —— 注入事件会和真人操作打架，
+  动手前截屏确认当前界面，或直接让用户人肉验证
+
 **Windows 侧的两个坑**：
 - Git Bash 会把 `/sdcard/x.png` 这种路径转成 Windows 路径 → 必须 `export MSYS_NO_PATHCONV=1`
 - Python 看不懂 Git Bash 的 `/tmp` → 截屏等临时文件写到

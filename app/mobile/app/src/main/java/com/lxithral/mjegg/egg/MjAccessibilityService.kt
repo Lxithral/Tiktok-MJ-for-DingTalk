@@ -191,19 +191,30 @@ class MjAccessibilityService : AccessibilityService() {
         // 拼出字面量 "null", 把文本污染成 "nullmj" 之类。
         val fromEvent = if (e.text.isNotEmpty()) e.text.filterNotNull().joinToString("") else null
 
+        // 钉钉实测(2026-09-26 真机抓包): 清空输入框派发的光标事件, text 列表里装的是
+        // **占位 hint**(聊天框是"记录一下"), 不是用户文本也不是空列表(微信才是空列表)。
+        // 直接喂状态机会把"记录一下"当输入 -> 撤销刚登记的 mj 候选, 触发永远出不来。
+        // 防御: 事件文本 == 节点自己的 hintText => 实际语义是"输入框已空"。
+        // 从节点现读 hint 而不是写死提示语, 提示语随场景变(单聊/群聊)也不怕。
+        val hint = runCatching { src?.hintText?.toString() }.getOrNull()
+        val eventIsHint = fromEvent != null && hint != null && fromEvent == hint
+        val effectiveEvent = if (eventIsHint) null else fromEvent
+
         // 特例(微信实测): 客户端**清空输入框**时发的就是一个"空列表"事件。
         // 空列表平时不能当"文本为空"(否则每条事件都会误判成清空), 但**当已有候选命中时**,
         // 它只可能是"输入框被清空" —— 这恰恰就是我们要的发送信号。
-        val clearedByEmptyList = fromSource == null && fromEvent == null &&
-                e.text.isEmpty() && trigger.hasPending()
+        // 钉钉的"事件文本==hint"同样只在有候选时按清空处理。
+        val clearedByEmptyList = fromSource == null && effectiveEvent == null &&
+                (e.text.isEmpty() || eventIsHint) && trigger.hasPending()
 
-        val text = fromSource ?: fromEvent ?: if (clearedByEmptyList) "" else null
+        val text = fromSource ?: effectiveEvent ?: if (clearedByEmptyList) "" else null
         val normalized = text?.let { Matcher.normalize(it) }
         EggDebug.noteTextChanged(pkg, text != null, normalized)
         EggDebug.log(
             "文本变化",
             "$pkg source=${if (src == null) "null" else src.className} 可编辑=$srcEditable " +
                     "source文本=${EggDebug.escape(fromSource)} event文本=${EggDebug.escape(fromEvent)} " +
+                    "hint=${EggDebug.escape(hint)} hint即文本=$eventIsHint " +
                     "空列表清空=$clearedByEmptyList 归一化后=${EggDebug.escape(normalized)}"
         )
 
