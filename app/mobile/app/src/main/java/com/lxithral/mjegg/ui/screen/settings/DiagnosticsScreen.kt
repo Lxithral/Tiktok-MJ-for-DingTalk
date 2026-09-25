@@ -35,10 +35,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 诊断页 —— 排查"某个客户端为什么没触发"。
  *
- * 能看到: 服务是否连上、目标应用发来的事件类型、事件里读到的文本、
- * 以及客户端到底暴露了什么样的输入框节点(类名 / 是否可编辑 / 文本能否读到)。
- * 这些信息足以定位是"服务没收到事件"、"输入框不可读" 还是 "判据没走通"。
+ * 顶部直接给**结论**: 每个目标应用分别断在哪一环(没连上 / 读不到文本 / 判据没走通)。
+ * 下面才是原始材料: 观察到的输入框节点、事件流水。
+ * 三种情况的处理方式完全不同, 所以不能只丢一堆日志让人猜。
  */
+private val ALL_TARGETS = listOf(
+    SettingsStore.PKG_WECHAT to "微信",
+    SettingsStore.PKG_QQ to "QQ",
+    SettingsStore.PKG_DINGTALK to "钉钉",
+)
+
 @Composable
 fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -49,8 +55,17 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
         }
     }
     val enabledInSettings = MjAccessibilityService.isEnabledInSettings(context)
+    // 结论每 2 秒重算一次(统计不是 Compose 状态, 用轮询取快照最简单可靠)
+    val verdict by produceState(initialValue = emptyList<String>()) {
+        while (true) {
+            val enabled = settings.enabledPackages()
+            value = EggDebug.verdict(ALL_TARGETS.filter { it.first in enabled })
+            delay(2000)
+        }
+    }
     val lines = EggDebug.lines
     val nodes = EggDebug.inputNodes
+    val treeLines = EggDebug.treeLines
 
     Scaffold(
         topBar = {
@@ -70,6 +85,57 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
+            SmallTitle("结论（每个应用分别断在哪一环）")
+            Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    if (verdict.isEmpty()) {
+                        Text(
+                            text = "还没有数据。去微信/QQ/钉钉里发一条 mj，再回来这里看。",
+                            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                            fontSize = MiuixTheme.textStyles.body2.fontSize,
+                        )
+                    } else {
+                        verdict.forEach { line ->
+                            Text(
+                                text = line,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                color = MiuixTheme.colorScheme.onSurfaceContainer,
+                                fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                            )
+                        }
+                    }
+                }
+            }
+
+            SmallTitle("控件树导出")
+            Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                ArrowPreference(
+                    title = "导出当前窗口控件树",
+                    summary = "在目标应用的聊天页点一下，回来点这里 —— 看清它到底把什么暴露给了无障碍",
+                    onClick = {
+                        MjAccessibilityService.instance?.dumpActiveWindowTree()
+                            ?: run { EggDebug.log("控件树", "服务未连接") }
+                    },
+                )
+                if (treeLines.isNotEmpty()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        treeLines.forEach { line ->
+                            Text(
+                                text = line,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 1.dp),
+                                color = MiuixTheme.colorScheme.onSurfaceContainer,
+                                fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+                }
+            }
+
             SmallTitle("状态")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 BasicComponent(

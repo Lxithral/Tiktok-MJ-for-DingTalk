@@ -55,12 +55,22 @@ fun AppTheme(settings: SettingsStore, content: @Composable () -> Unit) {
         if (settings.keyColor == 0) null else Color(settings.keyColor)
     }
 
-    val controller = remember(mode, seed, light, dark, isDark) {
+    val controller = remember(
+        mode,
+        seed,
+        light,
+        dark,
+        isDark,
+        settings.colorStyle,
+        settings.colorSpec,
+    ) {
         ThemeController(
             colorSchemeMode = mode,
             lightColors = light,
             darkColors = dark,
             keyColor = seed,
+            colorSpec = settings.colorSpec,
+            paletteStyle = settings.colorStyle,
             isDark = isDark,
         )
     }
@@ -75,3 +85,7 @@ fun resolveIsDark(mode: ColorMode): Boolean = when (mode) {
     ColorMode.LIGHT -> false
     ColorMode.DARK, ColorMode.AMOLED -> true
 }
+
+/** KernelSU 液态玻璃底栏移植源码需要的统一深色判定入口。 */
+@Composable
+fun isInDarkTheme(): Boolean = resolveIsDark(SettingsStore.get(androidx.compose.ui.platform.LocalContext.current).colorMode)

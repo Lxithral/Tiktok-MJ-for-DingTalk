@@ -1,5 +1,38 @@
 # 项目长期约定（MJ-DingTalk）
 
+## 手机真机调试（ADB 无线）
+
+adb 在 `D:/AAA_TOOLS/搞机工具箱10.1.0/adb.exe`（1.0.41 / 35.0.2）。
+手机是 **Redmi K60（23013RK75C / mondrian），Android 17，HyperOS V816，arm64-v8a**。
+
+**关键教训：用户给的 IP/端口经常是过期的。** 别照着用，直接 mDNS 发现：
+
+```bash
+ADB="D:/AAA_TOOLS/搞机工具箱10.1.0/adb.exe"
+"$ADB" start-server
+"$ADB" mdns services          # 列出 _adb-tls-pairing / _adb-tls-connect
+"$ADB" pair <发现到的 IP:端口> <配对码>       # 配对端口每次开对话框都会变
+"$ADB" connect <IP:连接端口>                  # 连接端口 ≠ 配对端口
+```
+
+连接端口若 mDNS 没广播，可以直接扫手机端口（实测落在 30000–50000）：
+多线程 connect 扫一遍，能连上的就是 adb 连接端口。
+
+**用 ADB 开无障碍服务**（省得手动点，也便于复现）：
+
+```bash
+"$ADB" shell settings put secure enabled_accessibility_services \
+  com.lxithral.mjegg/com.lxithral.mjegg.egg.MjAccessibilityService
+"$ADB" shell settings put secure accessibility_enabled 1
+"$ADB" shell dumpsys accessibility | grep -A2 "Bound services"   # 确认真的绑上了
+```
+
+**Windows 侧的两个坑**：
+- Git Bash 会把 `/sdcard/x.png` 这种路径转成 Windows 路径 → 必须 `export MSYS_NO_PATHCONV=1`
+- Python 看不懂 Git Bash 的 `/tmp` → 截屏等临时文件写到
+  `C:/Users/Lxithral/AppData/Local/Temp/mjshot/` 这种双方都认的路径
+- 截屏用 `adb exec-out screencap -p > file.png`（不要用 shell screencap + pull，路径转换会踩坑）
+
 ## 交付流程（用户明确要求，必须遵守）
 
 **每次编译完手机版 APK，都要发到微信「文件传输助手」**，方便用户在手机上取包。
@@ -17,6 +50,9 @@
   `SetClipboardData`）在 64 位下**必须显式声明 argtypes/restype 为指针**，
   否则句柄被截断，粘贴会静默失败。
 - 微信窗口被最小化到托盘时脚本找不到主窗口，需要先让微信窗口可见。
+  **已自动处理**：窗口最小化后 `GetWindowRect` 返回 `(-32000,-32000,...)` 这种哨兵坐标，
+  按面积过滤会把它当小窗口漏掉 —— 必须用 `GetWindowPlacement` 的 `rcNormalPosition`
+  才是还原后的真实大小；脚本现在会自动 `ShowWindow(SW_RESTORE)` 再发。
 
 **push 完也要发一条「已 push」的提醒**到同一个会话。
 

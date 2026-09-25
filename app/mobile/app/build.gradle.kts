@@ -18,6 +18,8 @@ val keystoreProperties = Properties().apply {
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    // Route : NavKey 需要 @Serializable, 由这个插件生成序列化器
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -29,8 +31,8 @@ android {
         // miuix-blur 0.9.3 自身声明 minSdk 33; 玻璃模糊本来也需要 API 33 的 RuntimeShader
         minSdk = 33
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 8
+        versionName = "1.0.7"
     }
 
     signingConfigs {
@@ -61,9 +63,10 @@ android {
         }
     }
 
+    // miuix-nav 0.9.4 的 inline NavDisplay API 以 JVM 21 编译，应用侧必须对齐目标版本。
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     buildFeatures {
@@ -84,7 +87,7 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
+        jvmTarget.set(JvmTarget.JVM_21)
         freeCompilerArgs.addAll("-Xskip-metadata-version-check")
     }
 }
@@ -100,6 +103,11 @@ dependencies {
     implementation(libs.miuix.preference)
     implementation(libs.miuix.icons)
     implementation(libs.miuix.blur)
+    // 导航栈: NavDisplay + 返回栈 + 滑动/视差转场
+    implementation(libs.miuix.nav)
+
+    // 预测性返回的隐藏 API 豁免
+    implementation(libs.hiddenapibypass)
 
     // 纯 JVM 单元测试: 触发词规则与触发状态机(不需要真机)
     testImplementation(libs.junit)

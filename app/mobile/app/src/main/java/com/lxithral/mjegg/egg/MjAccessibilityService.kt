@@ -1,9 +1,11 @@
 package com.lxithral.mjegg.egg
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -44,6 +46,12 @@ class MjAccessibilityService : AccessibilityService() {
     private var lastFireAt = 0L
     private var lastPollAt = 0L
 
+    /** 最近一次收到事件的目标包名, 用于把统计归到正确的应用上。 */
+    private var lastTargetPkg: String? = null
+
+    /** 诊断广播接收器(见 registerDebugReceiver)。 */
+    private var debugReceiver: BroadcastReceiver? = null
+
     /**
      * 命中候选后开启的高频轮询。
      * 只在候选有效期内运行(通常不到一两秒), 之后自动停, 不做无谓开销。
@@ -73,8 +81,39 @@ class MjAccessibilityService : AccessibilityService() {
         overlay = EggOverlay(this)
         trigger.onFire = { reason -> fire(reason) }
         trigger.reset()
+        registerDebugReceiver()
         EggDebug.log("服务", "已连接; 请求的事件类型=${serviceInfo?.eventTypes?.let { "0x%X".format(it) } ?: "?"}")
         Log.i(TAG, "无障碍服务已连接")
+    }
+
+    /**
+     * 诊断用广播接收器。
+     *
+     * 为什么需要它: 导出控件树必须在**目标应用仍在前台**时执行, 否则
+     * `rootInActiveWindow` 读到的是我们自己的窗口。用广播触发就不用切前台了:
+     *
+     *   adb shell am broadcast -a com.lxithral.mjegg.DUMP_TREE
+     */
+    private fun registerDebugReceiver() {
+        if (debugReceiver != null) return
+        val r = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    ACTION_DUMP_TREE -> {
+                        dumpActiveWindowTree()
+                        dumpAllWindowsInfo()
+                    }
+                    ACTION_CLEAR_LOG -> EggDebug.clear()
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(ACTION_DUMP_TREE)
+            addAction(ACTION_CLEAR_LOG)
+        }
+        // ADB(shell) 要能发过来, 必须导出
+        registerReceiver(r, filter, RECEIVER_EXPORTED)
+        debugReceiver = r
     }
 
     override fun onInterrupt() {
@@ -97,6 +136,10 @@ class MjAccessibilityService : AccessibilityService() {
         if (instance === this) instance = null
         trigger.onFire = null
         trigger.reset()
+        debugReceiver?.let {
+            runCatching { unregisterReceiver(it) }
+        }
+        debugReceiver = null
         overlay?.dismiss()
         overlay = null
     }
@@ -109,6 +152,8 @@ class MjAccessibilityService : AccessibilityService() {
 
         val pkg = e.packageName?.toString() ?: return
         if (pkg !in settings.enabledPackages()) return
+        lastTargetPkg = pkg
+        EggDebug.noteEvent(pkg)
 
         when (e.eventType) {
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> onTextChanged(e, pkg)
@@ -121,9 +166,17 @@ class MjAccessibilityService : AccessibilityService() {
                 }
             }
 
+            // 微信实测(2026-09 真机抓包): 发送后清空输入框, 微信派发的是"光标变化"事件,
+            // 且此时它的窗口树对无障碍**完全不可见**(rootInActiveWindow 只有 1 个根节点,
+            // uiautomator dump 同样是空树) —— 所以"轮询读节点确认变空"这条路在微信上永远读不到。
+            // 唯一可用的信号是**事件自带的 text 列表**: 打字时是 ["mj"], 清空时是 [](空列表)。
+            // 因此光标变化事件与 TEXT_CHANGED 走完全相同的处理: 非空列表当文本喂状态机;
+            // 空列表 + 已有候选 => 按"输入框被清空"确认发送(onTextChanged 内部会先尝试读
+            // source 节点文本, 读得到非空就不会误触发)。
+            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> onTextChanged(e, pkg)
+
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                // 没有候选时也低频读一次: 兜住"清空输入框不派发 TEXT_CHANGED"的客户端
                 pollFocusedInputThrottled("内容/窗口变化")
             }
         }
@@ -138,15 +191,24 @@ class MjAccessibilityService : AccessibilityService() {
         // 拼出字面量 "null", 把文本污染成 "nullmj" 之类。
         val fromEvent = if (e.text.isNotEmpty()) e.text.filterNotNull().joinToString("") else null
 
-        val text = fromSource ?: fromEvent
+        // 特例(微信实测): 客户端**清空输入框**时发的就是一个"空列表"事件。
+        // 空列表平时不能当"文本为空"(否则每条事件都会误判成清空), 但**当已有候选命中时**,
+        // 它只可能是"输入框被清空" —— 这恰恰就是我们要的发送信号。
+        val clearedByEmptyList = fromSource == null && fromEvent == null &&
+                e.text.isEmpty() && trigger.hasPending()
+
+        val text = fromSource ?: fromEvent ?: if (clearedByEmptyList) "" else null
+        val normalized = text?.let { Matcher.normalize(it) }
+        EggDebug.noteTextChanged(pkg, text != null, normalized)
         EggDebug.log(
             "文本变化",
             "$pkg source=${if (src == null) "null" else src.className} 可编辑=$srcEditable " +
                     "source文本=${EggDebug.escape(fromSource)} event文本=${EggDebug.escape(fromEvent)} " +
-                    "归一化后=${EggDebug.escape(text?.let { Matcher.normalize(it) })}"
+                    "空列表清空=$clearedByEmptyList 归一化后=${EggDebug.escape(normalized)}"
         )
 
         if (text != null) {
+            if (Matcher.matches(text)) EggDebug.noteMatch(pkg)
             trigger.onInputText(text)
             if (trigger.hasPending()) ensurePendingPolling()
         } else {
@@ -166,26 +228,73 @@ class MjAccessibilityService : AccessibilityService() {
     /**
      * 读当前焦点输入框并喂给状态机。
      *
-     * 两条安全约束:
-     * - 读不到文本(null)且当前没有候选 -> 直接忽略。**绝不能把 null 当成"空字符串"**,
-     *   否则每次轮询都会误判成"输入框被清空"。
-     * - 焦点节点不是可编辑控件时不上报(例如焦点跑到列表上), 避免误判。
+     * **实测教训(微信)**: 微信聊天输入框在无障碍里的 `className` 是 null、`isEditable` 是 false。
+     * 早期版本先判断"可编辑"再读文本, 结果直接跳过、连文本都没读 —— 而它恰恰就是
+     * `FOCUS_INPUT`。所以这里改成**只要能读到文本就用**, 不再要求节点"可编辑":
+     * `findFocus(FOCUS_INPUT)` 本身已经足够说明它是输入焦点所在。
+     *
+     * 唯一的硬约束: 文本读到 null 就不上报(既不当成空串, 也不撤销候选) ——
+     * 否则每次轮询都会误判成"输入框被清空"。
      */
     private fun pollFocusedInput(reason: String) {
         val focus = focusedInputNode() ?: return
-        if (!isEditableNode(focus)) {
-            EggDebug.noteInputNode(focus.className?.toString() ?: "?", false, false, null)
-            return
+        var node = focus
+        var cls = node.className?.toString()
+        var raw = node.text?.toString()
+        // 微信实测: findFocus(FOCUS_INPUT) 返回的是 ChattingUILayout 这种**容器**,
+        // 它自己没有 className/text; 真正的输入框在它的子树里。所以要往下找一层。
+        if (raw == null) {
+            val inner = findInputInSubtree(focus, 0)
+            if (inner != null) {
+                node = inner
+                cls = inner.className?.toString()
+                raw = inner.text?.toString()
+            }
         }
-        val raw = focus.text?.toString()
-        EggDebug.noteInputNode(focus.className?.toString() ?: "?", true, raw != null, raw)
-        if (raw == null && !trigger.hasPending()) return
-        trigger.onInputText(raw ?: "")
+        val nodePkg = try {
+            node.packageName?.toString()
+        } catch (t: Throwable) {
+            null
+        }
+        val editable = isEditableNode(node)
+        EggDebug.noteInputNode(cls ?: "?", editable, raw != null, raw)
+        if (raw == null) return
+        val normalized = Matcher.normalize(raw)
+        EggDebug.noteInputRead(nodePkg ?: lastTargetPkg, cls, true, normalized)
+        if (Matcher.matches(raw)) EggDebug.noteMatch(nodePkg ?: lastTargetPkg)
+        trigger.onInputText(raw)
         // 注意: 这里**不要**再调 ensurePendingPolling —— 轮询链的续期由 pendingPoller
         // 自己的尾部负责, 两处都排程会让同一时刻存在两条链, 实际频率翻倍。
-        if (reason == "轮询" && raw != null && raw.isNotEmpty()) {
-            EggDebug.log("轮询", "焦点输入框=$reason 文本=${EggDebug.escape(raw)} 归一化后=${EggDebug.escape(Matcher.normalize(raw))}")
+        if (reason == "轮询" && raw.isNotEmpty()) {
+            EggDebug.log("轮询", "焦点输入框=$reason 文本=${EggDebug.escape(raw)} 归一化后=${EggDebug.escape(normalized)}")
         }
+    }
+
+    /**
+     * 在子树里找"像输入框"的节点。
+     * 判据: 可编辑 / 类名含 Edit / 有输入焦点 / 有 hint —— 只往下钻有限层, 避免代价失控。
+     */
+    private fun findInputInSubtree(node: AccessibilityNodeInfo, depth: Int): AccessibilityNodeInfo? {
+        if (depth > 6) return null
+        val n = node.childCount
+        for (i in 0 until n) {
+            val c = try {
+                node.getChild(i)
+            } catch (t: Throwable) {
+                null
+            } ?: continue
+            val cc = c.className?.toString().orEmpty()
+            val looksInput = c.isEditable || c.isFocused ||
+                    cc.contains("Edit", true) ||
+                    (try {
+                        c.hintText != null
+                    } catch (t: Throwable) {
+                        false
+                    })
+            if (looksInput) return c
+            findInputInSubtree(c, depth + 1)?.let { return it }
+        }
+        return null
     }
 
     private fun focusedInputNode(): AccessibilityNodeInfo? = try {
@@ -237,6 +346,7 @@ class MjAccessibilityService : AccessibilityService() {
             return
         }
         lastFireAt = now
+        EggDebug.noteEmpty(lastTargetPkg)
         EggDebug.log("触发", reason)
         Log.i(TAG, "触发彩蛋: $reason")
         mainHandler.post {
@@ -254,8 +364,123 @@ class MjAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * 诊断用: 把当前活动窗口的控件树导出到日志。
+     *
+     * 只记录"有文本 / 有描述 / 可编辑 / 有输入焦点"的节点 —— 目的是看清目标客户端
+     * 到底把什么暴露给了无障碍, 而不是盲猜。排查"读不到输入框文本"时先跑这个。
+     */
+    fun dumpActiveWindowTree(): String {
+        val root = rootInActiveWindow ?: run {
+            EggDebug.logTree("rootInActiveWindow = null (当前没有活动窗口)")
+            return "没有活动窗口"
+        }
+        val lines = ArrayList<String>()
+        var total = 0
+        var kept = 0
+
+        fun walk(node: AccessibilityNodeInfo?, depth: Int) {
+            if (node == null || depth > 30 || kept >= 150) return
+            total++
+            val cls = node.className?.toString() ?: "?"
+            val txt = try {
+                node.text?.toString()
+            } catch (t: Throwable) {
+                null
+            }
+            val cd = try {
+                node.contentDescription?.toString()
+            } catch (t: Throwable) {
+                null
+            }
+            val hint = try {
+                node.hintText?.toString()
+            } catch (t: Throwable) {
+                null
+            }
+            val interesting = txt != null || cd != null || hint != null ||
+                    node.isEditable || node.isFocused || cls.contains("Edit", true)
+            if (interesting) {
+                kept++
+                val sb = StringBuilder()
+                repeat(depth.coerceAtMost(10)) { sb.append("  ") }
+                sb.append(cls)
+                sb.append(" editable=").append(node.isEditable)
+                sb.append(" focused=").append(node.isFocused)
+                sb.append(" text=").append(EggDebug.escape(txt))
+                if (cd != null) sb.append(" desc=").append(EggDebug.escape(cd))
+                if (hint != null) sb.append(" hint=").append(EggDebug.escape(hint))
+                lines.add(sb.toString())
+            }
+            val n = node.childCount
+            for (i in 0 until n) {
+                walk(try {
+                    node.getChild(i)
+                } catch (t: Throwable) {
+                    null
+                }, depth + 1)
+            }
+        }
+
+        walk(root, 0)
+        val head = "root=${root.packageName} 遍历 $total 个节点, 记录 $kept 条"
+        EggDebug.log("控件树", head)
+        lines.forEach { EggDebug.logTree(it) }
+        return head
+    }
+
+    /**
+     * 诊断用: 枚举所有窗口, 打到 logcat。
+     *
+     * `dumpActiveWindowTree` 只看 rootInActiveWindow; 但有的客户端(微信实测)会把
+     * 活动窗口的子树整个藏掉, 而别的窗口可能可见, 也可能是"藏掉的是活动窗口本身"。
+     * 这个方法把每个窗口的元数据 + 节点数 + 前几个"像输入框"的节点都打出来,
+     * 用于判断"树不可见"到底是客户端的哪个窗口在作怪。
+     */
+    fun dumpAllWindowsInfo() {
+        val ws = runCatching { windows }.getOrNull()
+        if (ws == null) {
+            Log.i(TAG, "win: windows 属性不可用")
+            return
+        }
+        Log.i(TAG, "win: 共 ${ws.size} 个窗口")
+        for (w in ws) {
+            val root = runCatching { w.root }.getOrNull()
+            if (root == null) {
+                Log.i(TAG, "win id=${w.id} type=${w.type} title=${w.title} active=${w.isActive} focused=${w.isFocused} root=null")
+                continue
+            }
+            var total = 0
+            var kept = 0
+            val samples = ArrayList<String>()
+            fun walk(node: AccessibilityNodeInfo?, depth: Int) {
+                if (node == null || kept >= 8) return
+                total++
+                val cls = node.className?.toString() ?: "?"
+                val txt = runCatching { node.text?.toString() }.getOrNull()
+                if (node.isEditable || node.isFocused || cls.contains("Edit", true) || txt != null) {
+                    kept++
+                    if (samples.size < 8) {
+                        samples.add("    cls=$cls editable=${node.isEditable} focused=${node.isFocused} text=${EggDebug.escape(txt)}")
+                    }
+                }
+                val n = node.childCount
+                for (i in 0 until n) {
+                    walk(runCatching { node.getChild(i) }.getOrNull(), depth + 1)
+                }
+            }
+            walk(root, 0)
+            Log.i(TAG, "win id=${w.id} type=${w.type} title=${w.title} active=${w.isActive} focused=${w.isFocused} rootPkg=${root.packageName} 遍历=$total 记录=$kept")
+            samples.forEach { Log.i(TAG, it) }
+        }
+    }
+
     companion object {
         private const val TAG = "MjEgg.Service"
+
+        /** 诊断广播: 导出当前窗口控件树 / 清空日志(见 registerDebugReceiver)。 */
+        const val ACTION_DUMP_TREE = "com.lxithral.mjegg.DUMP_TREE"
+        const val ACTION_CLEAR_LOG = "com.lxithral.mjegg.CLEAR_LOG"
 
         /** 候选有效期内的高频轮询间隔(观测"输入框被清空"这一瞬间)。 */
         private const val PENDING_POLL_MS = 80L

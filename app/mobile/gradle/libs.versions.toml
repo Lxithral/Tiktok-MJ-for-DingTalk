@@ -4,21 +4,32 @@ coreKtx = "1.19.0"
 activityCompose = "1.13.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
-miuix = "0.9.3"
+miuix = "0.9.4"
+hiddenapibypass = "6.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
-junit = { group = "junit", name = "junit", version = "4.13.2" }
 
 # miuix (小米 HyperOS 设计语言组件库)
 miuix-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-ui-android", version.ref = "miuix" }
 miuix-preference = { group = "top.yukonga.miuix.kmp", name = "miuix-preference-android", version.ref = "miuix" }
 miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons-android", version.ref = "miuix" }
 miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur-android", version.ref = "miuix" }
+# 导航栈: NavDisplay + 返回栈 + 滑动/视差转场
+# (替代"用 rememberSaveable 布尔值模拟页面跳转" —— 那正是二级页返回直接回桌面的根源)
+miuix-nav = { group = "top.yukonga.miuix.kmp", name = "miuix-nav-android", version.ref = "miuix" }
+
+# 预测性返回: 反射调用 ApplicationInfo#setEnableOnBackInvokedCallback 需要豁免隐藏 API
+hiddenapibypass = { group = "org.lsposed.hiddenapibypass", name = "hiddenapibypass", version.ref = "hiddenapibypass" }
+
+# 纯 JVM 单元测试: 触发词规则与触发状态机(不需要真机)
+junit = { group = "junit", name = "junit", version = "4.13.2" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+# Route : NavKey 必须 @Serializable(返回栈靠多态序列化持久化), 需要这个插件生成序列化器
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

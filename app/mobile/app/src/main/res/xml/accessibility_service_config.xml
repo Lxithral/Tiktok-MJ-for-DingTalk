@@ -2,13 +2,15 @@
 <!--
   MJ 彩蛋无障碍服务配置。
 
-  - 事件类型: 文本变化(打字/清空) + 窗口内容变化(部分客户端不派发 TEXT_CHANGED)
+  - 事件类型: 文本变化(打字) + 光标变化(微信清空输入框只派发这个, 且事件自带的 text
+              列表是唯一可用的"清空"信号 —— 微信的窗口树对无障碍完全不可见)
+              + 窗口内容变化(部分客户端不派发 TEXT_CHANGED)
               + 窗口状态变化(切换会话) + 点击(点"发送"按钮)
   - 不限定 packageNames: 目标应用可在 App 内动态开关, 代码里再过滤
-  - 不申请 canPerformGestures / canRetrieveWindowContent 之外的任何能力, 全程只读
+  - 不申请 canPerformGestures 等任何额外能力, 全程只读
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeViewTextChanged|typeWindowContentChanged|typeWindowStateChanged|typeViewClicked"
+    android:accessibilityEventTypes="typeViewTextChanged|typeViewTextSelectionChanged|typeWindowContentChanged|typeWindowStateChanged|typeViewClicked"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault|flagReportViewIds|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"

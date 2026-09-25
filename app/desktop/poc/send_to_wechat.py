@@ -179,8 +179,24 @@ def proc_name_of(pid):
     return nm
 
 
+class WINDOWPLACEMENT(ctypes.Structure):
+    _fields_ = [("length", wt.UINT), ("flags", wt.UINT), ("showCmd", wt.UINT),
+                ("ptMinPosition", wt.POINT), ("ptMaxPosition", wt.POINT),
+                ("rcNormalPosition", wt.RECT)]
+
+
+SW_RESTORE = 9
+SW_SHOW = 5
+
+
 def wechat_window():
-    res = []
+    """找微信主窗口; 最小化时自动还原。
+
+    坑: 窗口最小化后 GetWindowRect 返回 (-32000,-32000,...) 这种哨兵坐标,
+    按面积过滤会把它当成小窗口漏掉 —— 必须用 GetWindowPlacement 的
+    rcNormalPosition 才是还原后的真实大小。
+    """
+    cands = []
     EP = ctypes.WINFUNCTYPE(ctypes.c_bool, wt.HWND, wt.LPARAM)
 
     def cb(hwnd, _):
@@ -188,16 +204,39 @@ def wechat_window():
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         if proc_name_of(pid.value).lower() != "weixin.exe":
             return True
-        if not user32.IsWindowVisible(hwnd):
+        cls = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, cls, 256)
+        if "Qt51514QWindowIcon" not in cls.value:
             return True
-        rc = wt.RECT()
-        user32.GetWindowRect(hwnd, ctypes.byref(rc))
+        n = user32.GetWindowTextLengthW(hwnd)
+        title = ctypes.create_unicode_buffer(n + 1)
+        user32.GetWindowTextW(hwnd, title, n + 1)
+        wp = WINDOWPLACEMENT()
+        wp.length = ctypes.sizeof(WINDOWPLACEMENT)
+        ok = user32.GetWindowPlacement(hwnd, ctypes.byref(wp))
+        if ok:
+            rc = wp.rcNormalPosition
+        else:
+            rc = wt.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rc))
         area = (rc.right - rc.left) * (rc.bottom - rc.top)
-        if area > 100000:
-            res.append((hwnd, area))
+        minimized = bool(user32.IsIconic(hwnd))
+        cands.append((area, hwnd, title.value, minimized))
         return True
+
     user32.EnumWindows(EP(cb), 0)
-    return max(res, key=lambda x: x[1])[0] if res else 0
+    if not cands:
+        return 0
+    # 优先标题为"微信"的主窗口, 其次面积最大的
+    main = [c for c in cands if c[2].strip() == "微信"]
+    area, hwnd, title, minimized = max(main or cands, key=lambda c: c[0])
+    if area < 50000:
+        return 0
+    if minimized:
+        print("微信窗口处于最小化状态, 先还原")
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        time.sleep(1.0)
+    return hwnd
 
 
 def find_by_class(node, needle, depth=0, hits=None, max_depth=30):

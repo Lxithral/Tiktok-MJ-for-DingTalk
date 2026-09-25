@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -17,7 +20,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 
@@ -28,10 +31,18 @@ fun SettingsScreen(
     isDark: Boolean,
     onOpenTheme: () -> Unit,
     onOpenDiagnostics: () -> Unit,
+    onOpenAbout: () -> Unit,
 ) {
     val context = LocalContext.current
     @Suppress("UNUSED_EXPRESSION")
     isDark
+    val connected by produceState(initialValue = MjAccessibilityService.isConnected()) {
+        while (true) {
+            value = MjAccessibilityService.isConnected()
+            delay(1000)
+        }
+    }
+    val enabledInSettings = MjAccessibilityService.isEnabledInSettings(context)
     Scaffold(
         topBar = { TopAppBar(title = "设置", largeTitle = "设置") }
     ) { padding ->
@@ -54,12 +65,11 @@ fun SettingsScreen(
                     title = "深色模式",
                     summary = settings.colorMode.label(),
                 )
-                BasicComponent(
+                SwitchPreference(
                     title = "动态取色 (Monet)",
                     summary = if (settings.monet) "跟随系统壁纸配色" else "使用预设主题色",
-                    endActions = {
-                        Switch(checked = settings.monet, onCheckedChange = settings::updateMonet)
-                    },
+                    checked = settings.monet,
+                    onCheckedChange = settings::updateMonet,
                 )
                 BasicComponent(
                     title = "当前形态",
@@ -71,8 +81,11 @@ fun SettingsScreen(
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 BasicComponent(
                     title = "服务状态",
-                    summary = if (MjAccessibilityService.isConnected()) "已连接"
-                    else "未连接（彩蛋不会触发）",
+                    summary = when {
+                        connected -> "已连接（正在收事件）"
+                        enabledInSettings -> "系统已勾选，但服务未连接（建议关闭后重新打开）"
+                        else -> "未连接（彩蛋不会触发）"
+                    },
                 )
                 ArrowPreference(
                     title = "打开系统无障碍设置",
@@ -92,9 +105,11 @@ fun SettingsScreen(
 
             SmallTitle("关于")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
-                BasicComponent(title = "应用", summary = "MJ 彩蛋（手机版）")
-                BasicComponent(title = "版本", summary = "1.0.0")
-                BasicComponent(title = "开发者", summary = "L'xithral")
+                ArrowPreference(
+                    title = "关于 MJ 彩蛋",
+                    summary = "版本 / 开发者 / 开源信息",
+                    onClick = onOpenAbout,
+                )
             }
 
             Spacer(Modifier.height(24.dp))
