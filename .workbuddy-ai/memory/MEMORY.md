@@ -27,6 +27,13 @@ ADB="D:/AAA_TOOLS/搞机工具箱10.1.0/adb.exe"
 "$ADB" shell dumpsys accessibility | grep -A2 "Bound services"   # 确认真的绑上了
 ```
 
+**微信触发链路的关键事实**（2026-09-25 真机抓包定位，详见 mobile README v1.0.7）：
+- 微信的窗口树对无障碍**完全不可见**（rootInActiveWindow 只有根节点，uiautomator dump 也是空树），
+  一切"轮询读节点"的方案在微信上都不可行；能用的只有**事件自带的 text 列表**（打字=["mj"]，清空=[]）
+- 诊断广播（目标应用前台时发）：`"$ADB" shell am broadcast -a com.lxithral.mjegg.DUMP_TREE`，
+  清日志 `-a com.lxithral.mjegg.CLEAR_LOG`；App 内「诊断」页有逐环结论
+- uiautomator dump 对微信返回 407 字节空树属正常，别浪费时间重试
+
 **Windows 侧的两个坑**：
 - Git Bash 会把 `/sdcard/x.png` 这种路径转成 Windows 路径 → 必须 `export MSYS_NO_PATHCONV=1`
 - Python 看不懂 Git Bash 的 `/tmp` → 截屏等临时文件写到
@@ -35,26 +42,19 @@ ADB="D:/AAA_TOOLS/搞机工具箱10.1.0/adb.exe"
 
 ## 交付流程（用户明确要求，必须遵守）
 
-**每次编译完手机版 APK，都要发到微信「文件传输助手」**，方便用户在手机上取包。
+**手机版 APK 编译完直接 `adb install -r` 装到手机，不要发微信「文件传输助手」**。
+（2026-09-25 用户指示，覆盖旧的"发文件传输助手 + push 后发提醒"流程；push 后也不用发提醒。）
 
-- 用现成脚本：`app/desktop/poc/send_to_wechat.py <apk路径>`
-- 发文字（例如 push 完的提醒）：`python send_to_wechat.py --text "已 push"`
-- **发中文一定要走剪贴板粘贴，不要逐字符 SendInput**：逐字符打中文会被微信的富文本
-  输入框丢字（标点后紧跟的字常丢），并且把全角标点重复一遍（`，`→`，,`、`。`→`。。`、
-  `「`→`「「`）。脚本里已改成 `CF_UNICODETEXT` + `Ctrl+V`，并**读回输入框内容做校验**，
-  不一致就清空重试，最多 3 次，避免发出乱码。
-- 原理：文件走剪贴板（`CF_HDROP`）+ `Ctrl+V` 粘贴成附件；文字走 `CF_UNICODETEXT` + `Ctrl+V`。
-  切到「文件传输助手」会话后回车发送。走真实用户操作路径，不碰微信私有接口。
-- 验证方式：截图看会话里出现 `<文件名> <大小>`，且不再显示「上传中」。
-- 注意：`CF_HDROP` 相关的 Win32 句柄（`GlobalAlloc` / `GlobalLock` /
-  `SetClipboardData`）在 64 位下**必须显式声明 argtypes/restype 为指针**，
-  否则句柄被截断，粘贴会静默失败。
-- 微信窗口被最小化到托盘时脚本找不到主窗口，需要先让微信窗口可见。
-  **已自动处理**：窗口最小化后 `GetWindowRect` 返回 `(-32000,-32000,...)` 这种哨兵坐标，
-  按面积过滤会把它当小窗口漏掉 —— 必须用 `GetWindowPlacement` 的 `rcNormalPosition`
-  才是还原后的真实大小；脚本现在会自动 `ShowWindow(SW_RESTORE)` 再发。
-
-**push 完也要发一条「已 push」的提醒**到同一个会话。
+- 设备经 ADB 连接（USB 或无线 mDNS 都行），装完可顺手 `am start` 拉起 App
+- 桌面仍留一份备份：`D:\desktop\MJ彩蛋手机版-v<版本>.apk`
+- release 签名，新版本能直接覆盖安装
+- **HyperOS 坑**：重装/force-stop 后，只挂无障碍服务的进程很快会被 Greezer 冻结
+  （广播报 `need cached broadcast`、事件停发）。装完先打开一次 App 再去聊天验证；
+  已把 `com.lxithral.mjegg` 加进 `deviceidle whitelist`。ADB 广播（DUMP_TREE/CLEAR_LOG）
+  被拦时，先拉起 App 让进程解冻再发。
+- （旧流程曾用 `app/desktop/poc/send_to_wechat.py` 发微信，脚本留在仓库但不再是交付环节；
+  里面的 Win32 剪贴板经验——CF_HDROP 句柄必须显式声明指针 argtypes、最小化窗口要用
+  `GetWindowPlacement` 的 `rcNormalPosition` 才能还原——哪天再用得上就翻 git 历史。）
 
 ## git push 在这台机器上的坑（重要）
 
