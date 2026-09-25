@@ -209,7 +209,8 @@ app/desktop/
     ├── keylog.py             # 按键取证(区分屏幕键盘与宏工具注入)
     ├── test_trigger.py       # 端到端触发测试
     ├── tabtip_e2e.py         # 触摸键盘端到端测试
-    └── send_to_wechat.py     # 把文件发到微信「文件传输助手」(发布 APK 用)
+    ├── verify_phone_dingtalk.py  # 手机版钉钉触发验证(ADB 驱动, 手机连上后一条命令)
+    └── send_to_wechat.py     # 发文件/文字到微信「文件传输助手」(已退出交付流程, 工具保留)
 ```
 
 ## 致谢与许可
