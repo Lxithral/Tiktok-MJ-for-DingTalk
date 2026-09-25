@@ -165,7 +165,8 @@ fs[0].save('assets/mj-drop-alpha.webp', save_all=True, append_images=fs[1:], dur
 
 ## 已验证
 
-- ✅ 微信 4.x / QQ NT 实测：真实发送 `mj`、`mjmj` 均触发，动画交替播放、自动关闭
+- ✅ 微信 4.x / QQ NT / 钉钉 三端实测（2026-09-25 端到端回归，`poc/test_trigger.py` 真发消息）：
+  发送 `mj` 均触发，动画锚定正确、自动关闭
 - ✅ Windows 触摸键盘实测：点 `m` `j` 回车发送同样触发
 - ✅ 键盘兜底路径实测：故意写错输入框类名后仍能触发；`amj` 负向用例不触发
 - ✅ 触发词规则、冷却防重、多实例互斥
@@ -177,7 +178,6 @@ fs[0].save('assets/mj-drop-alpha.webp', save_all=True, append_images=fs[1:], dur
 - 需要**当前会话窗口在前台**且能定位到聊天输入框（独立聊天窗口同样支持）
 - 用鼠标点"发送"按钮发送 mj：走路径 B，可触发（前提是之前 1.2 秒内输入框被轮询命中过）
 - 客户端大版本更新可能改变控件类名，届时调整 `config.json` 的 `targets[].input_class`
-- 钉钉的适配沿用原实现（`im_chat::InputRichTextEdit`），本机未安装钉钉时无法回归实测
 - 纯只读检测，账号风控风险低，但请理性使用
 
 ## 目录结构
