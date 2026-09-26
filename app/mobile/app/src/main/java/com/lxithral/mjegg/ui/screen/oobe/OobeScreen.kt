@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
@@ -52,7 +53,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -60,7 +60,6 @@ import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
@@ -106,7 +105,6 @@ import kotlin.math.roundToInt
 private val CUBIC_OUT = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)     // cubicOut
 private val SIN_OUT = CubicBezierEasing(0.39f, 0.575f, 0.565f, 1f)       // sinOut
 private val QUART_OUT = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)           // quartOut
-private val ACCEL_DECEL = FastOutSlowInEasing                            // accelerate_decelerate
 private val SINE_IN_OUT = CubicBezierEasing(0.37f, 0f, 0.63f, 1f)        // sine_in_out(pathInterpolator)
 
 private const val DEBOUNCE_MS = 2000L           // StartupFragment 点击防抖
@@ -114,7 +112,8 @@ private const val DISPLAY_OS_ANDO_MS = 2500L    // displayOsAndoDelay 兜底
 private const val BUTTON_IN_DELAY_MS = 1340L    // startPageBtnAnim setDelay(1340)
 private const val BUTTON_IN_DUR_MS = 450        // FolmeEase.cubicOut(450)
 private const val BUTTON_ENABLE_DELAY_MS = 1000L // delayEnableButton
-private const val MORPH_MS = 450                // makeScaleUpAnim 卡片缩放转场
+private const val MORPH_MS = 550                // makeScaleUpAnim 卡片缩放转场(放慢更优雅)
+private const val PAGE_SLIDE_MS = 500           // 页间翻页(放慢 + 视差淡出)
 
 // —— 真机参考图逐像素取色（勿改）——
 private val WORDMARK_INDIGO = Color(0xFF3939AB)   // 首屏/完成页字标
@@ -123,8 +122,10 @@ private val STATE_TEXT_INDIGO = Color(0xFF515497) // 完成页「设置完毕」
 private val BTN_LITE = Color(0x99000000)         // provision_next_lite: 60% 黑圆
 private val PROVISION_BLUE = Color(0xFF3482FF)   // provision_confirm_background / 线描图标
 private val CHECK_BLUE = Color(0xFF277AF7)       // provision_picker_btn_radio
-private val MJ_LOGO_RED_TOP = Color(0xFFE23B32)  // MJ logo 渐变（自绘）
-private val MJ_LOGO_RED_BOTTOM = Color(0xFFA61F26)
+private val MJ_LOGO_RED = Color(0xFFE0342F)      // MJ logo 底色（原版红方块）
+
+// 页间翻页缓动: 平滑进出(material standard), 比 accelerate_decelerate 更柔
+private val SMOOTH = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
 
 @Composable
 fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
@@ -141,9 +142,11 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
     var buttonBounds by remember { mutableStateOf<Rect?>(null) }
 
     // —— makeScaleUpAnim 转场: morphDir 0=无 1=前进(卡片放大) 2=返回(卡片缩回) ——
-    // morphP: 0 = 卡片=按钮 bounds, 1 = 卡片=全屏
+    // morphP: 0 = 卡片=按钮 bounds, 1 = 卡片=全屏; morphActive=转场层可见门闩
+    // (必须等 snapTo 落位后再显示, 否则首帧会以 p=1 全屏锚在左上角闪现)
     var morphDir by remember { mutableIntStateOf(0) }
-    val morphP = remember { Animatable(1f) }
+    var morphActive by remember { mutableStateOf(false) }
+    val morphP = remember { Animatable(0f) }
 
     fun backFromPermission() {
         firstEntry = false
@@ -160,13 +163,17 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
         when (morphDir) {
             1 -> {
                 morphP.snapTo(0f)
-                morphP.animateTo(1f, tween(MORPH_MS, easing = ACCEL_DECEL))
+                morphActive = true
+                morphP.animateTo(1f, tween(MORPH_MS, easing = SMOOTH))
                 step = 1
+                morphActive = false
                 morphDir = 0
             }
             2 -> {
                 morphP.snapTo(1f)
-                morphP.animateTo(0f, tween(MORPH_MS, easing = ACCEL_DECEL))
+                morphActive = true
+                morphP.animateTo(0f, tween(MORPH_MS, easing = SMOOTH))
+                morphActive = false
                 morphDir = 0
             }
         }
@@ -186,9 +193,9 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
         Box(
             Modifier
                 .fillMaxSize()
-                .then(if (morphDir != 0) Modifier.blur(20.dp) else Modifier)
+                .then(if (morphActive) Modifier.blur(20.dp) else Modifier)
         ) {
-            // —— 页间翻页 = provision_slide_*.xml: 纯平移 350ms accelerate_decelerate ——
+            // —— 页间翻页: 500ms 平滑滑动 + 旧页 30% 视差淡出(用户反馈 350ms 太快不优雅) ——
             // 0↔1 由卡片缩放转场驱动, 这里平地替换(被转场层遮住)
             AnimatedContent(
                 targetState = step,
@@ -199,11 +206,13 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
                         initialState == 1 && targetState == 0 ->
                             EnterTransition.None togetherWith ExitTransition.None
                         targetState > initialState ->
-                            slideInHorizontally(tween(350, easing = ACCEL_DECEL)) { it } togetherWith
-                                slideOutHorizontally(tween(350, easing = ACCEL_DECEL)) { -it }
+                            slideInHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { it } togetherWith
+                                (slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { -(it * 0.3f).roundToInt() } +
+                                    fadeOut(tween(PAGE_SLIDE_MS)))
                         else ->
-                            slideInHorizontally(tween(350, easing = ACCEL_DECEL)) { -it } togetherWith
-                                slideOutHorizontally(tween(350, easing = ACCEL_DECEL)) { it }
+                            slideInHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { -it } togetherWith
+                                (slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { (it * 0.3f).roundToInt() } +
+                                    fadeOut(tween(PAGE_SLIDE_MS)))
                     }
                 },
                 label = "oobe",
@@ -246,7 +255,7 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
         // —— makeScaleUpAnim 转场层: 圆角卡片 bounds 从按钮 morph 到全屏 ——
         // 卡片内是权限页**按 bounds 比例缩放**的真内容(录屏实测内容随窗口缩放)
         val bounds = buttonBounds
-        if (morphDir != 0 && bounds != null) {
+        if (morphActive && bounds != null) {
             val p = morphP.value
             val bw = bounds.width
             val bh = bounds.height
@@ -364,12 +373,13 @@ private fun SplashStep(
                 .weight(0.40f)
                 .fillMaxWidth(),
         ) {
-            // 字标(logo_image_wrapper): 顶对齐 + marginTop 20dp, 深蓝紫(#3939AB 取样)
+            // 字标(logo_image_wrapper): 顶对齐 + marginTop 20dp, 深蓝紫(#3939AB 取样),
+            // Black 字重(用户反馈 Bold 太细)
             Text(
                 text = "MJ 彩蛋",
                 color = WORDMARK_INDIGO,
                 fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Black,
                 textAlign = TextAlign.Center,
                 maxLines = 3,
                 modifier = Modifier
@@ -417,42 +427,17 @@ private fun SplashStep(
     }
 }
 
-/** MJ logo: 红渐变圆角方块 + 白蜘蛛剪影（Spider-Man 彩蛋主题, 自绘）。 */
+/** MJ logo: 红底圆角方块 + 白色「MJ」（原版样式, 用户选定）。 */
 @Composable
 private fun MjLogoIcon(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(22.dp))
-            .background(Brush.linearGradient(listOf(MJ_LOGO_RED_TOP, MJ_LOGO_RED_BOTTOM))),
+            .background(MJ_LOGO_RED),
+        contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.fillMaxSize()) { drawSpider() }
+        Text("MJ", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
     }
-}
-
-/** 白色蜘蛛剪影, 100×100 单位空间等比缩放。 */
-private fun DrawScope.drawSpider() {
-    val u = size.minDimension / 100f
-    val white = Color.White
-    // 腹部 + 头胸部
-    drawOval(white, topLeft = Offset(37f * u, 44f * u), size = Size(26f * u, 32f * u))
-    drawOval(white, topLeft = Offset(41f * u, 27f * u), size = Size(18f * u, 21f * u))
-    // 八条腿(对称)
-    val stroke = Stroke(width = 4.2f * u, cap = StrokeCap.Round)
-    fun leg(sx: Float, sy: Float, cx: Float, cy: Float, ex: Float, ey: Float) {
-        val p = Path().apply {
-            moveTo(sx * u, sy * u)
-            quadraticBezierTo(cx * u, cy * u, ex * u, ey * u)
-        }
-        drawPath(p, white, style = stroke)
-    }
-    leg(42f, 33f, 28f, 25f, 16f, 13f)
-    leg(40f, 41f, 24f, 37f, 10f, 33f)
-    leg(40f, 53f, 24f, 58f, 10f, 70f)
-    leg(43f, 61f, 32f, 74f, 28f, 88f)
-    leg(58f, 33f, 72f, 25f, 84f, 13f)
-    leg(60f, 41f, 76f, 37f, 90f, 33f)
-    leg(60f, 53f, 76f, 58f, 90f, 70f)
-    leg(57f, 61f, 68f, 74f, 72f, 88f)
 }
 
 /** provision_icon_arrow 31×22 viewport 路径逐点照抄, 落位 29×20dp。 */
@@ -897,7 +882,7 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
                     text = "MJ 彩蛋",
                     color = WORDMARK_INDIGO,
                     fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.Black,
                     textAlign = TextAlign.Center,
                     maxLines = 3,
                 )
