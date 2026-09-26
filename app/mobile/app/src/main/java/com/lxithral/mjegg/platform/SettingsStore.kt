@@ -170,6 +170,14 @@ class SettingsStore private constructor(context: Context) {
             prefs.edit().putBoolean(K_TARGET_DINGTALK, v).apply()
         }
 
+    private var targetDouyinState by mutableStateOf(prefs.getBoolean(K_TARGET_DOUYIN, true))
+    var targetDouyin: Boolean
+        get() = targetDouyinState
+        set(v) {
+            targetDouyinState = v
+            prefs.edit().putBoolean(K_TARGET_DOUYIN, v).apply()
+        }
+
     private var volumeState by mutableStateOf(prefs.getInt(K_VOLUME, 100))
     var volume: Int
         get() = volumeState
@@ -220,6 +228,7 @@ class SettingsStore private constructor(context: Context) {
     fun updateTargetWeChat(v: Boolean) { targetWeChat = v }
     fun updateTargetQQ(v: Boolean) { targetQQ = v }
     fun updateTargetDingTalk(v: Boolean) { targetDingTalk = v }
+    fun updateTargetDouyin(v: Boolean) { targetDouyin = v }
     fun updateVolume(v: Int) { volume = v.coerceIn(0, 100) }
     fun updateOverlayHeight(v: Int) { overlayHeight = v.coerceIn(30, 150) }
     fun updateCooldownSeconds(v: Int) { cooldownSeconds = v.coerceIn(0, 60) }
@@ -229,6 +238,7 @@ class SettingsStore private constructor(context: Context) {
         if (targetWeChat) add(PKG_WECHAT)
         if (targetQQ) add(PKG_QQ)
         if (targetDingTalk) add(PKG_DINGTALK)
+        if (targetDouyin) add(PKG_DOUYIN)
     }
 
     companion object {
@@ -248,6 +258,7 @@ class SettingsStore private constructor(context: Context) {
         private const val K_TARGET_WECHAT = "target_wechat"
         private const val K_TARGET_QQ = "target_qq"
         private const val K_TARGET_DINGTALK = "target_dingtalk"
+        private const val K_TARGET_DOUYIN = "target_douyin"
         private const val K_VOLUME = "volume"
         private const val K_HEIGHT = "overlay_height_ratio"
         private const val K_COOLDOWN = "cooldown_s"
@@ -258,6 +269,7 @@ class SettingsStore private constructor(context: Context) {
         const val PKG_WECHAT = "com.tencent.mm"
         const val PKG_QQ = "com.tencent.mobileqq"
         const val PKG_DINGTALK = "com.alibaba.android.rimet"
+        const val PKG_DOUYIN = "com.ss.android.ugc.aweme"
 
         /** 枚举反序列化：存的是 name，取值失败一律回落到默认值（不抛异常）。 */
         private inline fun <reified T : Enum<T>> enumOf(name: String?, fallback: T): T =

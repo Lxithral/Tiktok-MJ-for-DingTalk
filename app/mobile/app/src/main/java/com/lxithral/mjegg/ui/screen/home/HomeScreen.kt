@@ -115,13 +115,13 @@ fun HomeScreen(settings: SettingsStore, isDark: Boolean, themeKey: String) {
                 InfoRow("触发词", "mj / mjmj / MJ / MjMj …")
                 InfoRow("不触发", "mjm / mjx / amj")
                 InfoRow("只响应自己发送的", "对方发的 mj 不会触发")
-                InfoRow("生效范围", "微信 / QQ / 钉钉 的聊天输入框")
+                InfoRow("生效范围", "微信 / QQ / 钉钉 / 抖音 的聊天输入框")
             }
 
             SmallTitle("怎么用")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
-                    text = "在微信、QQ 或钉钉的聊天输入框里输入 mj 并发送，" +
+                    text = "在微信、QQ、钉钉或抖音的聊天输入框里输入 mj 并发送，" +
                             "全屏会播放一段带透明通道的蜘蛛侠动画，播完自动消失，" +
                             "不挡操作也不会抢焦点。",
                     modifier = Modifier.padding(16.dp),

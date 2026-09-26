@@ -56,6 +56,12 @@ fun FeatureScreen(settings: SettingsStore) {
                     checked = settings.targetDingTalk,
                     onCheckedChange = settings::updateTargetDingTalk,
                 )
+                SwitchPreferenceRow(
+                    title = "抖音",
+                    summary = "com.ss.android.ugc.aweme",
+                    checked = settings.targetDouyin,
+                    onCheckedChange = settings::updateTargetDouyin,
+                )
             }
 
             SmallTitle("播放")

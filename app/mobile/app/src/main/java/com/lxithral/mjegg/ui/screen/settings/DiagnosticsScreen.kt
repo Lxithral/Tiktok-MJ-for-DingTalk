@@ -43,6 +43,7 @@ private val ALL_TARGETS = listOf(
     SettingsStore.PKG_WECHAT to "微信",
     SettingsStore.PKG_QQ to "QQ",
     SettingsStore.PKG_DINGTALK to "钉钉",
+    SettingsStore.PKG_DOUYIN to "抖音",
 )
 
 @Composable
@@ -90,7 +91,7 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     if (verdict.isEmpty()) {
                         Text(
-                            text = "还没有数据。去微信/QQ/钉钉里发一条 mj，再回来这里看。",
+                            text = "还没有数据。去微信/QQ/钉钉/抖音里发一条 mj，再回来这里看。",
                             color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                             fontSize = MiuixTheme.textStyles.body2.fontSize,
                         )
@@ -165,7 +166,7 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 if (nodes.isEmpty()) {
                     Text(
-                        text = "还没有观察到输入框。去微信/QQ/钉钉的聊天里点一下输入框，" +
+                        text = "还没有观察到输入框。去微信/QQ/钉钉/抖音的聊天里点一下输入框，" +
                                 "回来这里就能看到客户端暴露的节点信息。",
                         modifier = Modifier.padding(16.dp),
                         color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
