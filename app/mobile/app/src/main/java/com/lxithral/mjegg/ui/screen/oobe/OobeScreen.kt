@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
@@ -46,15 +47,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -77,51 +85,46 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
 
 /*
- * OOBE 首启引导 —— 逐项对照 HyperCeiler `library/provision` 实现（AGPL-3.0）：
+ * OOBE 首启引导 —— 逐项对照 HyperCeiler `library/provision`（AGPL-3.0）+ 真机参考截图/录屏：
  * https://github.com/ReChronoRain/HyperCeiler
  *
- * 参照源文件（数值/时序/布局均照抄源码，未自创）：
- *   fragment/StartupFragment.java        首屏装配 + 2s 防抖 + displayOsAndoDelay(2500ms) 兜底
- *   utils/AnimHelper.java                startPageLogoAnim / startPageBtnAnim(Folme) 时序
- *   renderengine/GlowController.java     uTime 从 0 起、ping-pong 2↔120、16ms 帧循环
- *   renderengine/GlowPainter.java        uniform 全表
- *   renderengine/RenderViewLayout.java   0.2× 居中渲染 + scale 5× + 黑底(-16777216)
- *   fragment/PermissionSettingsFragment  下一步单门控: 禁用 + HALF_ALPHA(0.5)
- *   widget/PermissionItemView.java       权限行: 56dp + 右侧蓝 check(仅显隐)
- *   fragment/CongratulationFragment.java 完成页入场/退场 + startHome 转场
- *   fan/provision/ProvisionBaseActivity  delayEnableButton(1000ms) + 返回钮 40dp
- *   res/layout/provision_startup_layout  权重 30/90dp/40/20 + 按钮 70dp(padding 4.5dp)
- *   res/layout/provision_congratulation  权重 18/40/0.2 + 按钮 50dp 圆角 16dp #99000000
- *   res/layout/provision_permission_*.xml 权限行 56dp / 次级文本 13sp
- *   res/anim/provision_slide_*.xml       页间纯平移 350ms accelerate_decelerate（无淡出）
- *   res/anim/enter_home_anim.xml         主页进场 1.3→1.0(619ms 弹簧 d0.65/r0.55) + α230ms offset60
- *   res/anim/provision_out_anim.xml      引导退场 alpha 360ms sine_in_out
+ * 参照源文件：StartupFragment / AnimHelper / GlowController / GlowPainter / RenderViewLayout /
+ * PermissionSettingsFragment / PermissionItemView / CongratulationFragment / ProvisionBaseActivity
+ * + provision_startup_layout / provision_congratulation_layout / provision_permission_*.xml
+ * + provision_slide_*.xml / enter_home_anim / provision_out_anim / colors.xml。
  *
- * MJ 适配（非 HyperCeiler 内容）：logo=红底 MJ 方块、字标「MJ 彩蛋」、各页文案、
- * 权限行=无障碍服务、基础设置=监听应用开关。用户协议页按既定决定不做。
+ * 真机录屏校准（MiShare/temp 对比素材）：
+ *   点圆钮转场 = makeScaleUpAnim：新页以圆角卡片从按钮 bounds 放大铺满，**内容随窗口缩放**、
+ *   飞行中略半透明，旧页在后面**模糊**（不是黑块垫底）；返回 = 同动画反向缩回按钮。
+ *   取色（1440×3200 参考图逐像素）：字标 #3939AB 深蓝紫、圆钮 #33356E 深蓝紫、
+ *   完成页状态字 #515497。字标/按钮位置尺寸与参考完全一致，不动。
+ *
+ * MJ 适配：logo=红渐变+白蜘蛛（自绘）、字标「MJ 彩蛋」、线描预览图标、无障碍权限页。
  */
 
-// —— Folme 缓动的贝塞尔等价（EaseManager/FolmeEase 常用档）——
+// —— Folme/系统缓动的贝塞尔等价 ——
 private val CUBIC_OUT = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)     // cubicOut
 private val SIN_OUT = CubicBezierEasing(0.39f, 0.575f, 0.565f, 1f)       // sinOut
 private val QUART_OUT = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)           // quartOut
 private val ACCEL_DECEL = FastOutSlowInEasing                            // accelerate_decelerate
 private val SINE_IN_OUT = CubicBezierEasing(0.37f, 0f, 0.63f, 1f)        // sine_in_out(pathInterpolator)
 
-private const val DEBOUNCE_MS = 2000L          // StartupFragment 点击防抖
-private const val DISPLAY_OS_ANDO_MS = 2500L   // displayOsAndoDelay 兜底
-private const val BUTTON_IN_DELAY_MS = 1340L   // startPageBtnAnim setDelay(1340)
-private const val BUTTON_IN_DUR_MS = 450       // FolmeEase.cubicOut(450)
+private const val DEBOUNCE_MS = 2000L           // StartupFragment 点击防抖
+private const val DISPLAY_OS_ANDO_MS = 2500L    // displayOsAndoDelay 兜底
+private const val BUTTON_IN_DELAY_MS = 1340L    // startPageBtnAnim setDelay(1340)
+private const val BUTTON_IN_DUR_MS = 450        // FolmeEase.cubicOut(450)
 private const val BUTTON_ENABLE_DELAY_MS = 1000L // delayEnableButton
+private const val MORPH_MS = 450                // makeScaleUpAnim 卡片缩放转场
 
-// —— 颜色照抄 res/values/colors.xml 与各 drawable, 勿按名翻译 ——
-private val GLASS_GREY = Color(0xCC4A4A4A)      // 模糊按钮玻璃底(blender -867546550)
-private val BTN_LITE = Color(0x99000000)        // provision_next_lite: 60% 黑圆
-private const val FOREGROUND_FILL = 0x99000000  // anim_foreground_color (非模糊)
-private val PROVISION_BLUE = Color(0xFF3482FF)  // provision_confirm_background
-private val CHECK_BLUE = Color(0xFF277AF7)      // provision_picker_btn_radio
-private val STATE_TEXT_COLOR = Color(0xBF000000) // system_state_text #BF000000
-private val MJ_LOGO_RED = Color(0xFFE0342F)     // MJ 红底 logo（自绘, 见文件头）
+// —— 真机参考图逐像素取色（勿改）——
+private val WORDMARK_INDIGO = Color(0xFF3939AB)   // 首屏/完成页字标
+private val BUTTON_INDIGO = Color(0xFF33356E)    // 首屏圆钮（玻璃暗紫）
+private val STATE_TEXT_INDIGO = Color(0xFF515497) // 完成页「设置完毕」
+private val BTN_LITE = Color(0x99000000)         // provision_next_lite: 60% 黑圆
+private val PROVISION_BLUE = Color(0xFF3482FF)   // provision_confirm_background / 线描图标
+private val CHECK_BLUE = Color(0xFF277AF7)       // provision_picker_btn_radio
+private val MJ_LOGO_RED_TOP = Color(0xFFE23B32)  // MJ logo 渐变（自绘）
+private val MJ_LOGO_RED_BOTTOM = Color(0xFFA61F26)
 
 @Composable
 fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
@@ -132,17 +135,41 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
     val blurGlass = settings.enableBlur && shaderSupported
 
     var step by remember { mutableIntStateOf(0) }
-    var expanding by remember { mutableStateOf(false) }
-    val expandProgress = remember { Animatable(0f) }
-    var buttonBounds by remember { mutableStateOf<Rect?>(null) }
     var lastTapAt by remember { mutableLongStateOf(0L) }
     // needAdmission 语义: 只有真正首入首屏放圆环; 点按钮前进或返回回首屏均不再放圈
     var firstEntry by remember { mutableStateOf(true) }
+    var buttonBounds by remember { mutableStateOf<Rect?>(null) }
 
-    // transitToPrevious: OOBE 内返回=回上一步(镜像滑动); 首屏返回交系统(退出)
+    // —— makeScaleUpAnim 转场: morphDir 0=无 1=前进(卡片放大) 2=返回(卡片缩回) ——
+    // morphP: 0 = 卡片=按钮 bounds, 1 = 卡片=全屏
+    var morphDir by remember { mutableIntStateOf(0) }
+    val morphP = remember { Animatable(1f) }
+
+    fun backFromPermission() {
+        firstEntry = false
+        step = 0
+        morphDir = 2
+    }
+
+    // transitToPrevious: OOBE 内返回=回上一步; 权限页返回=缩回按钮(转场层驱动)
     BackHandler(enabled = step > 0) {
-        if (step == 1) firstEntry = false
-        step -= 1
+        if (step == 1) backFromPermission() else step -= 1
+    }
+
+    LaunchedEffect(morphDir) {
+        when (morphDir) {
+            1 -> {
+                morphP.snapTo(0f)
+                morphP.animateTo(1f, tween(MORPH_MS, easing = ACCEL_DECEL))
+                step = 1
+                morphDir = 0
+            }
+            2 -> {
+                morphP.snapTo(1f)
+                morphP.animateTo(0f, tween(MORPH_MS, easing = ACCEL_DECEL))
+                morphDir = 0
+            }
+        }
     }
 
     BoxWithConstraints(
@@ -152,102 +179,106 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
     ) {
         val rootW = constraints.maxWidth.toFloat()
         val rootH = constraints.maxHeight.toFloat()
+        val rootWdp = with(density) { rootW.toDp() }
+        val rootHdp = with(density) { rootH.toDp() }
 
-        // —— 页间翻页 = provision_slide_*.xml: 纯平移 350ms accelerate_decelerate, 无淡出 ——
-        AnimatedContent(
-            targetState = step,
-            transitionSpec = {
-                when {
-                    // 0→1 由按钮放大转场落地, 翻页动画不掺和(平地替换, 被转场层遮住)
-                    initialState == 0 && targetState == 1 ->
-                        EnterTransition.None togetherWith ExitTransition.None
-                    targetState > initialState ->
-                        slideInHorizontally(tween(350, easing = ACCEL_DECEL)) { it } togetherWith
-                            slideOutHorizontally(tween(350, easing = ACCEL_DECEL)) { -it }
-                    else ->
-                        slideInHorizontally(tween(350, easing = ACCEL_DECEL)) { -it } togetherWith
-                            slideOutHorizontally(tween(350, easing = ACCEL_DECEL)) { it }
+        // 转场期间旧页(首屏)在卡片后面模糊 —— 录屏实测是模糊不是压黑
+        Box(
+            Modifier
+                .fillMaxSize()
+                .then(if (morphDir != 0) Modifier.blur(20.dp) else Modifier)
+        ) {
+            // —— 页间翻页 = provision_slide_*.xml: 纯平移 350ms accelerate_decelerate ——
+            // 0↔1 由卡片缩放转场驱动, 这里平地替换(被转场层遮住)
+            AnimatedContent(
+                targetState = step,
+                transitionSpec = {
+                    when {
+                        initialState == 0 && targetState == 1 ->
+                            EnterTransition.None togetherWith ExitTransition.None
+                        initialState == 1 && targetState == 0 ->
+                            EnterTransition.None togetherWith ExitTransition.None
+                        targetState > initialState ->
+                            slideInHorizontally(tween(350, easing = ACCEL_DECEL)) { it } togetherWith
+                                slideOutHorizontally(tween(350, easing = ACCEL_DECEL)) { -it }
+                        else ->
+                            slideInHorizontally(tween(350, easing = ACCEL_DECEL)) { -it } togetherWith
+                                slideOutHorizontally(tween(350, easing = ACCEL_DECEL)) { it }
+                    }
+                },
+                label = "oobe",
+            ) { target ->
+                when (target) {
+                    0 -> SplashStep(
+                        glowActive = glowActive,
+                        blurGlass = blurGlass,
+                        rootHeightPx = rootH,
+                        admission = firstEntry,
+                        entryAnim = firstEntry,
+                        onButtonBounds = { buttonBounds = it },
+                        buttonHidden = morphDir == 1,
+                        onExpand = {
+                            val now = System.currentTimeMillis()
+                            if (morphDir == 0 && now - lastTapAt > DEBOUNCE_MS) {
+                                lastTapAt = now
+                                firstEntry = false
+                                morphDir = 1
+                            }
+                        },
+                    )
+
+                    1 -> PermissionStep(
+                        onBack = { backFromPermission() },
+                        onNext = { step = 2 },
+                    )
+
+                    2 -> BasicStep(
+                        settings = settings,
+                        onBack = { if (step > 0) step -= 1 },
+                        onNext = { step = 3 },
+                    )
+
+                    else -> DoneStep(glowActive = glowActive, blurGlass = blurGlass, onDone = onDone)
                 }
-            },
-            label = "oobe",
-        ) { target ->
-            when (target) {
-                0 -> SplashStep(
-                    glowActive = glowActive,
-                    blurGlass = blurGlass,
-                    rootHeightPx = rootH,
-                    admission = firstEntry,
-                    entryAnim = firstEntry,
-                    onButtonBounds = { buttonBounds = it },
-                    buttonHidden = expanding,
-                    onExpand = {
-                        val now = System.currentTimeMillis()
-                        if (!expanding && now - lastTapAt > DEBOUNCE_MS) {
-                            lastTapAt = now
-                            firstEntry = false
-                            expanding = true
-                        }
-                    },
-                )
-
-                1 -> PermissionStep(
-                    onBack = { if (step > 0) { firstEntry = false; step -= 1 } },
-                    onNext = { step = 2 },
-                )
-
-                2 -> BasicStep(
-                    settings = settings,
-                    onBack = { if (step > 0) step -= 1 },
-                    onNext = { step = 3 },
-                )
-
-                else -> DoneStep(glowActive = glowActive, blurGlass = blurGlass, onDone = onDone)
             }
         }
 
-        // —— 按钮放大转场: ActivityOptions.makeScaleUpAnim 的 Compose 等价 ——
-        // 圆钮 bounds 起手放大成圆角矩形铺满, 前景色垫底(模糊开 #00ffffff / 非模糊 #99000000),
-        // 铺满后落地第一页, 转场层整体淡出(几何保持铺满, 只淡 alpha)。
+        // —— makeScaleUpAnim 转场层: 圆角卡片 bounds 从按钮 morph 到全屏 ——
+        // 卡片内是权限页**按 bounds 比例缩放**的真内容(录屏实测内容随窗口缩放)
         val bounds = buttonBounds
-        if (expanding && bounds != null) {
-            val overlayAlpha = remember { Animatable(1f) }
-            LaunchedEffect(Unit) {
-                expandProgress.snapTo(0f)
-                overlayAlpha.snapTo(1f)
-                expandProgress.animateTo(1f, tween(BUTTON_IN_DUR_MS, easing = CUBIC_OUT))
-                step = 1
-                overlayAlpha.animateTo(0f, tween(200))
-                expanding = false
-            }
-            val p = expandProgress.value
-            val layerAlpha = overlayAlpha.value
-            val surface = MiuixTheme.colorScheme.surface
-            val btnSize = with(density) { bounds.width.toDp() }
-            val rootWdp = with(density) { rootW.toDp() }
-            val rootHdp = with(density) { rootH.toDp() }
-            val w = btnSize + (rootWdp - btnSize) * p
-            val h = btnSize + (rootHdp - btnSize) * p
-            val x = with(density) { (bounds.center.x - w.toPx() / 2f).roundToInt() }
-            val y = with(density) { (bounds.center.y - h.toPx() / 2f).roundToInt() }
-            val corner = btnSize / 2f * (1f - p)
-            val btnFill = if (blurGlass) GLASS_GREY else Color(FOREGROUND_FILL)
+        if (morphDir != 0 && bounds != null) {
+            val p = morphP.value
+            val bw = bounds.width
+            val bh = bounds.height
+            val w = bw + (rootW - bw) * p
+            val h = bh + (rootH - bh) * p
+            val cx = bounds.center.x + (rootW / 2f - bounds.center.x) * p
+            val cy = bounds.center.y + (rootH / 2f - bounds.center.y) * p
+            val corner = with(density) { (bw / 2f * (1f - p)).toDp() }
 
-            if (!blurGlass) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = layerAlpha }
-                        .background(Color(FOREGROUND_FILL).copy(alpha = p))
-                )
-            }
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(x, y) }
-                    .size(w, h)
-                    .graphicsLayer { alpha = layerAlpha }
+                    .offset { IntOffset((cx - w / 2f).roundToInt(), (cy - h / 2f).roundToInt()) }
+                    .size(
+                        with(density) { w.toDp() },
+                        with(density) { h.toDp() },
+                    )
                     .clip(RoundedCornerShape(corner))
-                    .background(lerp(btnFill, surface, p * p)),
-            )
+                    .graphicsLayer { alpha = 0.78f + 0.22f * p },
+            ) {
+                // 强制按全屏排版后整体缩放进卡片(transformOrigin 左上)
+                Box(
+                    Modifier
+                        .requiredSize(rootWdp, rootHdp)
+                        .graphicsLayer {
+                            scaleX = w / rootW
+                            scaleY = h / rootH
+                            transformOrigin = TransformOrigin(0f, 0f)
+                        }
+                ) {
+                    PermissionStep(onBack = {}, onNext = {})
+                }
+            }
         }
     }
 }
@@ -317,7 +348,7 @@ private fun SplashStep(
         Spacer(Modifier.weight(0.30f))
 
         // logo 90dp（与字标同一套 scale/alpha —— startPageLogoAnim 同时作用两个 view）
-        Box(
+        MjLogoIcon(
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
                 .size(90.dp)
@@ -325,23 +356,18 @@ private fun SplashStep(
                     scaleX = logoScale.value
                     scaleY = logoScale.value
                     alpha = logoAlpha.value
-                }
-                .clip(RoundedCornerShape(22.dp))
-                .background(MJ_LOGO_RED),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("MJ", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-        }
+                },
+        )
 
         Box(
             modifier = Modifier
                 .weight(0.40f)
                 .fillMaxWidth(),
         ) {
-            // 字标(logo_image_wrapper): 顶对齐 + marginTop 20dp
+            // 字标(logo_image_wrapper): 顶对齐 + marginTop 20dp, 深蓝紫(#3939AB 取样)
             Text(
                 text = "MJ 彩蛋",
-                color = Color.White,
+                color = WORDMARK_INDIGO,
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -362,7 +388,7 @@ private fun SplashStep(
                     },
             )
 
-            // 圆钮 70dp(next_layout 4.5dp padding), 顶点对齐区块底
+            // 圆钮 70dp(next_layout 4.5dp padding), 玻璃暗紫(#33356E 取样)
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -377,7 +403,7 @@ private fun SplashStep(
                             alpha = if (buttonHidden) 0f else btnAlpha.value
                         }
                         .clip(CircleShape)
-                        .background(if (blurGlass) GLASS_GREY else BTN_LITE)
+                        .background(if (blurGlass) BUTTON_INDIGO else BTN_LITE)
                         .onGloballyPositioned { onButtonBounds(it.boundsInRoot()) }
                         .clickable(enabled = buttonReady && !buttonHidden, onClick = onExpand),
                     contentAlignment = Alignment.Center,
@@ -389,6 +415,44 @@ private fun SplashStep(
 
         Spacer(Modifier.weight(0.20f))
     }
+}
+
+/** MJ logo: 红渐变圆角方块 + 白蜘蛛剪影（Spider-Man 彩蛋主题, 自绘）。 */
+@Composable
+private fun MjLogoIcon(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(Brush.linearGradient(listOf(MJ_LOGO_RED_TOP, MJ_LOGO_RED_BOTTOM))),
+    ) {
+        Canvas(Modifier.fillMaxSize()) { drawSpider() }
+    }
+}
+
+/** 白色蜘蛛剪影, 100×100 单位空间等比缩放。 */
+private fun DrawScope.drawSpider() {
+    val u = size.minDimension / 100f
+    val white = Color.White
+    // 腹部 + 头胸部
+    drawOval(white, topLeft = Offset(37f * u, 44f * u), size = Size(26f * u, 32f * u))
+    drawOval(white, topLeft = Offset(41f * u, 27f * u), size = Size(18f * u, 21f * u))
+    // 八条腿(对称)
+    val stroke = Stroke(width = 4.2f * u, cap = StrokeCap.Round)
+    fun leg(sx: Float, sy: Float, cx: Float, cy: Float, ex: Float, ey: Float) {
+        val p = Path().apply {
+            moveTo(sx * u, sy * u)
+            quadraticBezierTo(cx * u, cy * u, ex * u, ey * u)
+        }
+        drawPath(p, white, style = stroke)
+    }
+    leg(42f, 33f, 28f, 25f, 16f, 13f)
+    leg(40f, 41f, 24f, 37f, 10f, 33f)
+    leg(40f, 53f, 24f, 58f, 10f, 70f)
+    leg(43f, 61f, 32f, 74f, 28f, 88f)
+    leg(58f, 33f, 72f, 25f, 84f, 13f)
+    leg(60f, 41f, 76f, 37f, 90f, 33f)
+    leg(60f, 53f, 76f, 58f, 90f, 70f)
+    leg(57f, 61f, 68f, 74f, 72f, 88f)
 }
 
 /** provision_icon_arrow 31×22 viewport 路径逐点照抄, 落位 29×20dp。 */
@@ -440,38 +504,85 @@ private fun CheckIcon() {
     }
 }
 
-/** 返回箭头 = ?android:homeAsUpIndicator(细尖角), 40dp。 */
+/** 返回箭头 = ?android:homeAsUpIndicator: 「←」横杆箭头, 40dp。 */
 @Composable
 private fun BackIcon() {
     val color = MiuixTheme.colorScheme.onSurface
     Canvas(Modifier.size(40.dp)) {
-        val w = size.width
-        val h = size.height
-        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
-            width = h * 0.06f,
-            cap = androidx.compose.ui.graphics.StrokeCap.Round,
-            join = androidx.compose.ui.graphics.StrokeJoin.Round,
-        )
+        val u = size.minDimension / 100f
+        val stroke = Stroke(width = 5f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
         val path = Path().apply {
-            moveTo(w * 0.62f, h * 0.24f)
-            lineTo(w * 0.36f, h * 0.5f)
-            lineTo(w * 0.62f, h * 0.76f)
+            moveTo(74f * u, 50f * u)
+            lineTo(28f * u, 50f * u)
+            moveTo(45f * u, 33f * u)
+            lineTo(28f * u, 50f * u)
+            lineTo(45f * u, 67f * u)
         }
         drawPath(path, color, style = stroke)
     }
 }
 
+/** 权限页预览图标: 蓝色线描盾牌+对勾(70dp, 无底框, 对齐参考线描风格)。 */
+@Composable
+private fun ShieldIcon() {
+    Canvas(Modifier.size(70.dp)) {
+        val u = size.minDimension / 100f
+        val stroke = Stroke(width = 6f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val shield = Path().apply {
+            moveTo(50f * u, 10f * u)
+            lineTo(84f * u, 23f * u)
+            lineTo(84f * u, 50f * u)
+            cubicTo(84f * u, 70f * u, 70f * u, 85f * u, 50f * u, 92f * u)
+            cubicTo(30f * u, 85f * u, 16f * u, 70f * u, 16f * u, 50f * u)
+            lineTo(16f * u, 23f * u)
+            close()
+        }
+        drawPath(shield, PROVISION_BLUE, style = stroke)
+        val check = Path().apply {
+            moveTo(36f * u, 50f * u)
+            lineTo(46f * u, 61f * u)
+            lineTo(66f * u, 40f * u)
+        }
+        drawPath(check, PROVISION_BLUE, style = stroke)
+    }
+}
+
+/** 基础设置页预览图标: 蓝色线描滑块(70dp)。 */
+@Composable
+private fun SlidersIcon() {
+    Canvas(Modifier.size(70.dp)) {
+        val u = size.minDimension / 100f
+        val stroke = Stroke(width = 6f * u, cap = StrokeCap.Round)
+        fun row(y: Float, knobX: Float) {
+            val line = Path().apply {
+                moveTo(16f * u, y * u)
+                lineTo(84f * u, y * u)
+            }
+            drawPath(line, PROVISION_BLUE, style = stroke)
+            drawCircle(
+                PROVISION_BLUE,
+                radius = 10f * u,
+                center = Offset(knobX * u, y * u),
+                style = Stroke(width = 6f * u),
+            )
+        }
+        row(28f, 62f)
+        row(50f, 36f)
+        row(72f, 58f)
+    }
+}
+
 /**
  * 向导页外壳 —— provision_detail_layout + provision_actionbar + GroupButtons：
- * 顶部 40dp 返回钮(actionbar marginTop 50dp) → 70dp 居中预览图标 → 居中标题 32sp
+ * 顶部 40dp 返回钮(actionbar marginTop 50dp) → 70dp 居中线描预览图标 → 居中标题 32sp
  * (minHeight 42dp, 35dp 水平) → 居中副标题 14sp(tertiary) → 内容 → 底部「继续」
  * 50dp 圆角 16dp(max 336dp, 底距 44dp)。进页按钮 1000ms 后才可点(delayEnableButton)。
- * 无内容入场动画（centerPageAnim/endPageAnim 在源码中并无调用）。
  */
 @Composable
 private fun GuidePage(
     title: String,
     subtitle: String,
+    icon: @Composable () -> Unit,
     onBack: () -> Unit,
     nextEnabled: Boolean = true,
     onNext: () -> Unit,
@@ -498,12 +609,11 @@ private fun GuidePage(
         Spacer(Modifier.height(36.dp))   // provision_space_between_actionbar_title
 
         // preview_image 70dp
-        PreviewIcon(
-            modifier = Modifier
+        Box(
+            Modifier
                 .align(Alignment.CenterHorizontally)
                 .padding(top = 10.dp, bottom = 8.dp),
-            glyph = title,
-        )
+        ) { icon() }
 
         Column(
             modifier = Modifier
@@ -543,25 +653,6 @@ private fun GuidePage(
             label = "继续",
             enabled = canNext,
             onClick = onNext,
-        )
-    }
-}
-
-/** 页面预览图标(70dp): 蓝色描边圆角方块 + 单字。 */
-@Composable
-private fun PreviewIcon(modifier: Modifier = Modifier, glyph: String) {
-    Box(
-        modifier = modifier
-            .size(70.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(PROVISION_BLUE.copy(alpha = 0.12f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = glyph.take(1),
-            color = PROVISION_BLUE,
-            fontSize = 30.sp,
-            fontWeight = FontWeight.Bold,
         )
     }
 }
@@ -626,6 +717,7 @@ private fun PermissionRow(
             text = title,
             color = MiuixTheme.colorScheme.onSurface,
             fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
             modifier = Modifier.align(Alignment.CenterStart),
         )
         Box(modifier = Modifier.align(Alignment.CenterEnd)) {
@@ -638,7 +730,6 @@ private fun PermissionRow(
 /**
  * 权限设置页 —— PermissionSettingsActivity/Fragment:
  * 单门控范式: 无障碍服务未连通时「继续」禁用 + alpha 0.5(setAllowNext), 通后自动亮起。
- * 状态 1s 轮询刷新。
  */
 @Composable
 private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
@@ -655,6 +746,7 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
     GuidePage(
         title = "权限设置",
         subtitle = "彩蛋靠无障碍服务只读监听聊天输入框的文本变化。\n全程只读，不会替你打字或发消息。",
+        icon = { ShieldIcon() },
         onBack = onBack,
         nextEnabled = connected || enabledInSettings,
         onNext = onNext,
@@ -687,6 +779,7 @@ private fun BasicStep(settings: SettingsStore, onBack: () -> Unit, onNext: () ->
     GuidePage(
         title = "基础设置",
         subtitle = "选择要监控的聊天应用，随时可以在「功能」页改。",
+        icon = { SlidersIcon() },
         onBack = onBack,
         onNext = onNext,
     ) {
@@ -721,10 +814,10 @@ private fun BasicStep(settings: SettingsStore, onBack: () -> Unit, onNext: () ->
 
 /**
  * 完成页 —— provision_congratulation_layout + CongratulationFragment:
- * 权重 18/40/0.2；辉光 start(false) 无圆环；logo 组(logo 90dp + 字标 20dp + 状态字 30dp)
- * 整体 translationY 100px→0 + alpha(quartOut 1500ms)；按钮 alpha sinOut(450ms) 延迟 1000ms,
- * 2000ms 后才可点(startBtnAnim postDelayed)。点「开始使用」: logo 组 + 按钮 scale 1→0.8
- * spring(1.0, 0.36) + alpha sinOut(360ms)（startPageAnim）→ 接力主页进场。
+ * 权重 18/40/0.2；辉光 start(false) 无圆环；logo 组 translationY 100px→0 + alpha
+ * (quartOut 1500ms)；按钮 alpha sinOut(450ms) 延迟 1000ms, 2000ms 后才可点。
+ * 点「开始使用」: logo 组 + 按钮 scale 1→0.8 spring(1.0, 0.36) + alpha sinOut(360ms) → 接力主页。
+ * 字标 #3939AB / 状态字 #515497（真机取样）。
  */
 @Composable
 private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit) {
@@ -798,19 +891,11 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(90.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(MJ_LOGO_RED),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("MJ", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                }
+                MjLogoIcon(Modifier.size(90.dp))
                 Spacer(Modifier.height(20.dp))
                 Text(
                     text = "MJ 彩蛋",
-                    color = Color.White,
+                    color = WORDMARK_INDIGO,
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
@@ -819,7 +904,7 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
                 Spacer(Modifier.height(30.dp))
                 Text(
                     text = "设置完毕",
-                    color = STATE_TEXT_COLOR,
+                    color = STATE_TEXT_INDIGO,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Medium,
                 )
@@ -864,7 +949,7 @@ private fun GlowCanvas(
     if (!active) {
         Box(
             modifier.background(
-                androidx.compose.ui.graphics.Brush.verticalGradient(
+                Brush.verticalGradient(
                     listOf(Color(0xFF0A0A12), Color(0xFF12121E))
                 )
             )
@@ -956,7 +1041,7 @@ private fun GlowCanvas(
                         val s = shader
                         if (s == null) {
                             drawRect(
-                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                Brush.verticalGradient(
                                     listOf(Color(0xFF0A0A12), Color(0xFF12121E))
                                 )
                             )
