@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -54,41 +55,50 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 private val ICON_BLUE = Color(0xFF3482FF)    // 线描图标(provision 蓝)
 
 /**
- * 状态行 —— miuix BasicComponent 定制行:
- * checked=true 显示对勾(Check 20dp primary), 否则显示右箭头(提示可点)。
- * checked=null 表示"探测不到", 同样只显示箭头(用户接受检测不到就算了)。
+ * 状态行 —— miuix BasicComponent 定制行, 反馈语义照 HyperCeiler PermissionItemView:
+ * checked=true 显示对勾(Check 20dp primary); 未开启默认**空白占位**(对勾位隐形),
+ * showArrowWhenOff=true 时改显右箭头(用于"点按去开启"的引导场景)。
+ * checked=null 表示"探测不到"(界面 summary 应写明无法检测)。
  */
 @Composable
 fun StatusRow(
     title: String,
     checked: Boolean?,
     summary: String? = null,
+    showArrowWhenOff: Boolean = false,
     onClick: () -> Unit,
 ) {
     BasicComponent(
         title = title,
         summary = summary,
         onClick = onClick,
-        endActions = { StatusRowEnd(checked) },
+        endActions = { StatusRowEnd(checked, showArrowWhenOff) },
     )
 }
 
+/** 状态文字(反馈"开了/没开"), 供 summary 拼接。 */
+fun statusTextOf(checked: Boolean?): String = when (checked) {
+    true -> "已开启"
+    false -> "未开启"
+    null -> "无法检测"
+}
+
 @Composable
-private fun RowScope.StatusRowEnd(checked: Boolean?) {
-    if (checked == true) {
-        Icon(
+private fun RowScope.StatusRowEnd(checked: Boolean?, showArrowWhenOff: Boolean) {
+    when {
+        checked == true -> Icon(
             imageVector = MiuixIcons.Basic.Check,
             contentDescription = null,
             tint = MiuixTheme.colorScheme.primary,
             modifier = Modifier.size(20.dp),
         )
-    } else {
-        Icon(
+        showArrowWhenOff -> Icon(
             imageVector = MiuixIcons.Basic.ArrowRight,
             contentDescription = null,
             tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
             modifier = Modifier.size(10.dp, 16.dp),
         )
+        else -> Spacer(Modifier.size(20.dp))   // HC 语义: 未勾选时对勾位隐形
     }
 }
 
@@ -141,19 +151,36 @@ fun requestIgnoreBatteryOptimizations(context: Context) {
 }
 
 /**
- * 自启动是否已允许。MIUI/HyperOS 用 appops `android:auto_start` 记录,
- * 不是公开常量 —— 读不到时返回 null(界面不显对勾)。
+ * 自启动是否已允许。MIUI/HyperOS 用 appops `android:auto_start`(数值 op 10008)记录,
+ * 两条探测路径都拿不到真实状态时返回 null(界面显示"无法检测")。
  */
-fun isAutoStartAllowed(context: Context): Boolean? = runCatching {
-    val appOps = context.getSystemService(AppOpsManager::class.java) ?: return@runCatching null
-    @Suppress("DEPRECATION")
-    val mode = appOps.checkOpNoThrow("android:auto_start", Process.myUid(), context.packageName)
-    when (mode) {
-        AppOpsManager.MODE_ALLOWED -> true
-        AppOpsManager.MODE_IGNORED, AppOpsManager.MODE_ERRORED -> false
-        else -> null
+fun isAutoStartAllowed(context: Context): Boolean? {
+    val appOps = context.getSystemService(AppOpsManager::class.java) ?: return null
+    val modes = listOfNotNull(
+        runCatching {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow("android:auto_start", Process.myUid(), context.packageName)
+        }.getOrNull(),
+        // 数值 op 10008(MIUI OP_AUTO_START)在公开 SDK 无重载, 走反射尽力探测
+        runCatching {
+            val m = AppOpsManager::class.java.getMethod(
+                "checkOpNoThrow",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                String::class.java,
+            )
+            m.invoke(appOps, 10008, Process.myUid(), context.packageName) as Int
+        }.getOrNull(),
+    )
+    for (mode in modes) {
+        when (mode) {
+            AppOpsManager.MODE_ALLOWED -> return true
+            AppOpsManager.MODE_IGNORED -> return false
+            // MODE_ERRORED / DEFAULT = 这条路径没探到, 换下一条
+        }
     }
-}.getOrNull()
+    return null
+}
 
 /**
  * 锁定后台是否已开启。MIUI 的"最近任务锁定"没有公开查询接口 ——
@@ -221,7 +248,7 @@ fun KeepAliveRows() {
     Column {
         StatusRow(
             title = "允许自启动",
-            summary = "被禁止时系统会冻结服务 收不到 mj",
+            summary = "${statusTextOf(autoStart)} · 被禁止时系统会冻结服务 收不到 mj",
             checked = autoStart,
             onClick = {
                 openAutoStartSettings(context)
@@ -230,7 +257,7 @@ fun KeepAliveRows() {
         )
         StatusRow(
             title = "忽略电池优化",
-            summary = "省电策略设为无限制 息屏久了也能收事件",
+            summary = "${statusTextOf(ignoringBattery)} · 省电策略设为无限制 息屏久了也能收事件",
             checked = ignoringBattery,
             onClick = {
                 requestIgnoreBatteryOptimizations(context)
@@ -239,7 +266,7 @@ fun KeepAliveRows() {
         )
         StatusRow(
             title = "锁定后台",
-            summary = "在最近任务里把本应用卡片下拉加锁",
+            summary = "${statusTextOf(bgLocked)} · 在最近任务里把本应用卡片下拉加锁",
             checked = bgLocked,
             onClick = {
                 Toast.makeText(

@@ -32,8 +32,10 @@ import top.yukonga.miuix.kmp.nav.transition.NavTransitions
  */
 @Composable
 fun AppNavigation(settings: com.lxithral.mjegg.platform.SettingsStore) {
-    // OOBE: 首次启动先进引导, 完成后 replace 成主页; 之后每次启动直接进主页
-    val start = if (settings.oobeDone) Route.Main else Route.Oobe
+    // OOBE: 首次启动进引导; 已完成过引导但版本号变了也重进(带「本次更新」页);
+    // 版本没变直接进主页
+    val versionChanged = settings.lastRunVersion != com.lxithral.mjegg.BuildConfig.VERSION_NAME
+    val start = if (settings.oobeDone && !versionChanged) Route.Main else Route.Oobe
     val backStack = rememberNavBackStack(start)
     val navigator = remember(backStack) { Navigator(backStack) }
 
@@ -54,21 +56,29 @@ fun AppNavigation(settings: com.lxithral.mjegg.platform.SettingsStore) {
             ),
         ) {
             entry<Route.Oobe> {
-                OobeScreen(settings = settings, onDone = {
-                    settings.oobeDone = true
-                    settings.pendingHomeEnterAnim = true   // 主页 1.3→1.0 弹簧进场(§8.2)
-                    if (navigator.backStackSize() > 1 && navigator.backStack.contains(Route.Main)) {
-                        // 从开发者模式重新进入的: 弹回首屏(保留设置页等路径)
-                        navigator.popUntil { it is Route.Main }
-                    } else {
-                        // 首启引导: 整栈替换为主页(等价 CLEAR_TASK, §8.2(c))
-                        navigator.replace(Route.Main)
-                    }
-                })
+                OobeScreen(
+                    settings = settings,
+                    // 更新触发/开发者预览时带「本次更新」页, 全新安装不带
+                    showNotes = settings.pendingOobeNotes || settings.oobeDone,
+                    onDone = {
+                        settings.oobeDone = true
+                        settings.lastRunVersion = com.lxithral.mjegg.BuildConfig.VERSION_NAME
+                        settings.pendingOobeNotes = false
+                        settings.pendingHomeEnterAnim = true   // 主页 1.3→1.0 弹簧进场(§8.2)
+                        if (navigator.backStackSize() > 1 && navigator.backStack.contains(Route.Main)) {
+                            // 从开发者模式重新进入的: 弹回首屏(保留设置页等路径)
+                            navigator.popUntil { it is Route.Main }
+                        } else {
+                            // 首启引导: 整栈替换为主页(等价 CLEAR_TASK, §8.2(c))
+                            navigator.replace(Route.Main)
+                        }
+                    },
+                )
             }
             entry<Route.Main> {
                 MainScreen(settings, onRerunOobe = {
                     settings.oobeDone = false
+                    settings.pendingOobeNotes = true
                     navigator.push(Route.Oobe)
                 })
             }

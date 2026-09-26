@@ -178,6 +178,21 @@ class SettingsStore private constructor(context: Context) {
             prefs.edit().putBoolean(K_OOBE_DONE, v).apply()
         }
 
+    /**
+     * 上次运行的版本号(版本名)。与当前版本不一致时重进 OOBE 并展示「本次更新」页;
+     * 一致则直接进主页。null = 老版本升级上来(视为有更新)。
+     */
+    private var lastRunVersionState by mutableStateOf(prefs.getString(K_LAST_VERSION, null))
+    var lastRunVersion: String?
+        get() = lastRunVersionState
+        set(v) {
+            lastRunVersionState = v
+            prefs.edit().putString(K_LAST_VERSION, v).apply()
+        }
+
+    /** 开发者模式重跑引导时带「本次更新」页预览(会话内存, 不持久化)。 */
+    var pendingOobeNotes: Boolean = false
+
     /** OOBE 完成 → 主页首帧进场动画接力标志(会话内存, 不持久化)。
      *  主页读取后立即清掉, 播 scale 1.3→1.0 弹簧放大淡入(07 文档 §8.2 enter_home_anim)。 */
     var pendingHomeEnterAnim: Boolean = false
@@ -270,6 +285,7 @@ class SettingsStore private constructor(context: Context) {
         private const val K_TARGET_DINGTALK = "target_dingtalk"
         private const val K_TARGET_DOUYIN = "target_douyin"
         private const val K_OOBE_DONE = "oobe_done"
+        private const val K_LAST_VERSION = "last_run_version"
         private const val K_VOLUME = "volume"
         private const val K_HEIGHT = "overlay_height_ratio"
         private const val K_COOLDOWN = "cooldown_s"

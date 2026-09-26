@@ -135,14 +135,28 @@ private val MJ_LOGO_RED = Color(0xFFE0342F)      // MJ logo 底色（原版红�
 // 页间翻页缓动: 平滑进出(material standard), 比 accelerate_decelerate 更柔
 private val SMOOTH = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
 
+/** OOBE 流程页。Notes 仅在版本更新触发/开发者预览时插入首屏之后。 */
+private enum class OobePage { Splash, Notes, Permission, KeepAlive, Basic, Done }
+
 @Composable
-fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
+fun OobeScreen(settings: SettingsStore, showNotes: Boolean, onDone: () -> Unit) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val shaderSupported = isRuntimeShaderSupported()
     val glowActive = shaderSupported
     val blurGlass = settings.enableBlur && shaderSupported
 
+    // 流程页序: 首屏 → [本次更新] → 权限设置 → 保活设置 → 基础设置 → 完成
+    val pages = remember(showNotes) {
+        buildList {
+            add(OobePage.Splash)
+            if (showNotes) add(OobePage.Notes)
+            add(OobePage.Permission)
+            add(OobePage.KeepAlive)
+            add(OobePage.Basic)
+            add(OobePage.Done)
+        }
+    }
     var step by remember { mutableIntStateOf(0) }
     var lastTapAt by remember { mutableLongStateOf(0L) }
     // needAdmission 语义: 只有真正首入首屏放圆环; 点按钮前进或返回回首屏均不再放圈
@@ -197,12 +211,12 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
         val rootWdp = with(density) { rootW.toDp() }
         val rootHdp = with(density) { rootH.toDp() }
 
-        // 旧页处理(照抄 getAnimForeGroundColor 语义): 模糊开=旧页模糊(录屏实测的系统效果),
-        // 非模糊=前景遮罩 #99000000 压暗(遮罩画在下面的转场层里)
+        // 旧页处理: 模糊开=背景模糊随转场进度渐入(0→20dp, 用户描述"同时背景模糊"),
+        // 非模糊=前景遮罩 #99000000 压暗(照抄 getAnimForeGroundColor, 遮罩画在转场层里)
         Box(
             Modifier
                 .fillMaxSize()
-                .then(if (morphActive && blurGlass) Modifier.blur(20.dp) else Modifier)
+                .then(if (morphActive && blurGlass) Modifier.blur(20.dp * morphP.value) else Modifier)
         ) {
             // —— 页间翻页: 500ms 平滑滑动 + 旧页 30% 视差淡出(用户反馈 350ms 太快不优雅) ——
             // 0↔1 由卡片缩放转场驱动, 这里平地替换(被转场层遮住)
@@ -226,8 +240,8 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
                 },
                 label = "oobe",
             ) { target ->
-                when (target) {
-                    0 -> SplashStep(
+                when (pages[target]) {
+                    OobePage.Splash -> SplashStep(
                         glowActive = glowActive,
                         blurGlass = blurGlass,
                         rootHeightPx = rootH,
@@ -245,31 +259,37 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
                         },
                     )
 
-                    1 -> PermissionStep(
+                    OobePage.Notes -> NotesStep(
                         onBack = { backFromPermission() },
-                        onNext = { step = 2 },
+                        onNext = { step += 1 },
                     )
 
-                    2 -> KeepAliveStep(
+                    OobePage.Permission -> PermissionStep(
+                        onBack = { backFromPermission() },
+                        onNext = { step += 1 },
+                    )
+
+                    OobePage.KeepAlive -> KeepAliveStep(
                         onBack = { if (step > 0) step -= 1 },
-                        onNext = { step = 3 },
+                        onNext = { step += 1 },
                     )
 
-                    3 -> BasicStep(
+                    OobePage.Basic -> BasicStep(
                         settings = settings,
                         onBack = { if (step > 0) step -= 1 },
-                        onNext = { step = 4 },
+                        onNext = { step += 1 },
                     )
 
-                    else -> DoneStep(glowActive = glowActive, blurGlass = blurGlass, onDone = onDone)
+                    OobePage.Done -> DoneStep(glowActive = glowActive, blurGlass = blurGlass, onDone = onDone)
                 }
             }
         }
 
-        // —— makeScaleUpAnim 转场层(照抄 StartupFragment.buildPickPageAnimation 语义) ——
-        // captureRoundedBitmap = 按钮**整圆裁剪截图**, 转场中从按钮 bounds 放大铺满:
-        // 起手是圆钮外观(底色+白箭头随 bounds 等比放大), 页面内容随窗口比例缩放渐显,
-        // 前景遮罩 #99000000 压旧页(模糊开时改用旧页模糊, 见上层)。
+        // —— 转场三层(照用户实测的 HyperCeiler 观感) ——
+        // ① 圆钮外观随 bounds 等比放大(按钮放大的观感), 末段渐隐;
+        // ② 叠在按钮处的圆角矩形(新页窗口)同步放大并**淡入**(alpha 0→1), 内容随窗口比例缩放;
+        // ③ 背景同步模糊(上层 blur 随进度渐入; 非模糊时此处画 #99000000 前景遮罩)。
+        // 返回 = 三层同步反向缩回按钮。
         val bounds = buttonBounds
         if (morphActive && bounds != null) {
             val p = morphP.value
@@ -281,47 +301,25 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
             val cx = bounds.center.x + (rootW / 2f - bounds.center.x) * p
             val cy = bounds.center.y + (rootH / 2f - bounds.center.y) * p
             val corner = with(density) { (bw / 2f * (1f - p)).toDp() }
-            val layerAlpha = 0.78f + 0.22f * p
+            val dx = IntOffset((cx - w / 2f).roundToInt(), (cy - h / 2f).roundToInt())
+            val wDp = with(density) { w.toDp() }
+            val hDp = with(density) { h.toDp() }
+            val btnLayerAlpha = 1f - ((p - 0.6f) / 0.4f).coerceIn(0f, 1f)   // 末段 40% 渐隐
+            val rectAlpha = (p / 0.85f).coerceIn(0f, 1f)                    // 圆角矩形渐显
 
             if (!blurGlass) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = layerAlpha }
-                        .background(Color(FOREGROUND_FILL))
-                )
+                Box(Modifier.fillMaxSize().background(Color(FOREGROUND_FILL)))
             }
 
+            // ① 按钮放大层
             Box(
                 modifier = Modifier
-                    .offset { IntOffset((cx - w / 2f).roundToInt(), (cy - h / 2f).roundToInt()) }
-                    .size(
-                        with(density) { w.toDp() },
-                        with(density) { h.toDp() },
-                    )
+                    .offset { dx }
+                    .size(wDp, hDp)
                     .clip(RoundedCornerShape(corner))
-                    .background(
-                        lerp(
-                            if (blurGlass) BUTTON_INDIGO else BTN_LITE,
-                            surface,
-                            (p * 3f).coerceAtMost(1f),
-                        )
-                    ),
+                    .graphicsLayer { alpha = btnLayerAlpha }
+                    .background(if (blurGlass) BUTTON_INDIGO else BTN_LITE),
             ) {
-                // 页面内容随窗口比例缩放(录屏实测内容随窗口走), 飞行中略半透明
-                Box(
-                    Modifier
-                        .requiredSize(rootWdp, rootHdp)
-                        .graphicsLayer {
-                            scaleX = w / rootW
-                            scaleY = h / rootH
-                            transformOrigin = TransformOrigin(0f, 0f)
-                            alpha = layerAlpha
-                        }
-                ) {
-                    PermissionStep(onBack = {}, onNext = {})
-                }
-                // 按钮外观层: 白箭头随 bounds 等比放大, 前 20% 渐隐(圆位图 → 窗口的手感)
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -329,11 +327,35 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
                             val k = w / bw
                             scaleX = k
                             scaleY = k
-                            alpha = (1f - p / 0.2f).coerceIn(0f, 1f)
                         },
                     contentAlignment = Alignment.Center,
                 ) {
                     ArrowIcon()
+                }
+            }
+
+            // ② 圆角矩形(新页窗口)放大淡入层
+            Box(
+                modifier = Modifier
+                    .offset { dx }
+                    .size(wDp, hDp)
+                    .clip(RoundedCornerShape(corner))
+                    .graphicsLayer { alpha = rectAlpha }
+                    .background(surface),
+            ) {
+                Box(
+                    Modifier
+                        .requiredSize(rootWdp, rootHdp)
+                        .graphicsLayer {
+                            scaleX = w / rootW
+                            scaleY = h / rootH
+                            transformOrigin = TransformOrigin(0f, 0f)
+                        }
+                ) {
+                    when (pages[1]) {
+                        OobePage.Notes -> NotesStep(onBack = {}, onNext = {})
+                        else -> PermissionStep(onBack = {}, onNext = {})
+                    }
                 }
             }
         }
@@ -604,17 +626,20 @@ private fun GuidePage(
                     .defaultMinSize(minHeight = 42.dp),
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                text = subtitle,
-                color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 3,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
+            // 副标题逐行渲染(整段渲染在窄宽下会出现逐字换行), 行间自然衔接
+            subtitle.split('\n').forEach { line ->
+                Text(
+                    text = line,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
+
+        Spacer(Modifier.height(24.dp))   // 小字与下方操作区拉开距离
 
         content()
 
@@ -691,25 +716,55 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
         nextEnabled = connected || enabledInSettings,
         onNext = onNext,
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            // 未开启 → 尾部右箭头(提示可点), 已开启 → 对勾(miuix 标准行)
+        // miuix 标准行(Card + BasicComponent), 尾部 未开=右箭头(提示可点)/已开=对勾
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        ) {
             StatusRow(
                 title = "无障碍服务",
                 checked = connected || enabledInSettings,
+                summary = if (connected) "已连接 正在收事件\n您可以稍后在「设置」中更改"
+                else "点按该行前往系统设置开启\n开启后返回本页即可继续",
+                showArrowWhenOff = true,
                 onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
             )
-            Text(
-                text = if (connected) "已连接 正在收事件\n您可以稍后在「设置」中更改"
-                else "点按该行前往系统设置开启\n开启后返回本页即可继续",
-                color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                maxLines = 2,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 36.dp, vertical = 0.dp)
-                    .padding(top = 16.dp, bottom = 8.dp),
-            )
+        }
+    }
+}
+
+/**
+ * 本次更新页 —— 版本号变化时重进 OOBE 展示更新内容(开发者模式重跑也带本页预览)。
+ * 条目来自 [ReleaseNotes.notes], 每次发版在顶部追加。
+ */
+@Composable
+private fun NotesStep(onBack: () -> Unit, onNext: () -> Unit) {
+    GuidePage(
+        title = "本次更新",
+        subtitle = "版本 ${com.lxithral.mjegg.BuildConfig.VERSION_NAME} 的更新内容",
+        icon = { PreviewImage(R.drawable.oobe_ic_notes) },
+        onBack = onBack,
+        onNext = onNext,
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                ReleaseNotes.notes.forEach { line ->
+                    Text(
+                        text = "· $line",
+                        color = MiuixTheme.colorScheme.onSurfaceContainer,
+                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                        lineHeight = 22.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -723,7 +778,7 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
 private fun KeepAliveStep(onBack: () -> Unit, onNext: () -> Unit) {
     GuidePage(
         title = "保活设置",
-        subtitle = "彩蛋要在后台收事件\n请允许自启动、关闭省电限制 并在最近任务里锁定本应用\n否则息屏久了会收不到 mj",
+        subtitle = "彩蛋要在后台收事件\n否则息屏久了会收不到 mj",
         icon = { LockIcon() },
         onBack = onBack,
         onNext = onNext,
