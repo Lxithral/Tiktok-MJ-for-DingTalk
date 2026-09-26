@@ -107,18 +107,6 @@ fun ThemeSettingsScreen(settings: SettingsStore, onBack: () -> Unit) {
                     },
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
-                Card(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    SwitchPreference(
-                        title = "纯黑背景 AMOLED",
-                        summary = "深色模式下使用纯黑背景，省电并适合 OLED 屏幕",
-                        checked = settings.colorMode == ColorMode.AMOLED,
-                        onCheckedChange = { enabled ->
-                            settings.colorMode = if (enabled) ColorMode.AMOLED else ColorMode.DARK
-                        },
-                        enabled = settings.colorMode == ColorMode.DARK || settings.colorMode == ColorMode.AMOLED,
-                        startAction = { RowIcon(MiuixIcons.Theme) },
-                    )
-                }
             }
 
             item {
@@ -191,10 +179,10 @@ fun ThemeSettingsScreen(settings: SettingsStore, onBack: () -> Unit) {
                 }
             }
 
-            item {
-                SmallTitle("效果")
-                Card(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    if (blurSupported) {
+            if (blurSupported) {
+                item {
+                    SmallTitle("效果")
+                    Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                         SwitchPreference(
                             title = "启用模糊",
                             summary = "玻璃/毛玻璃效果总开关",
@@ -203,28 +191,6 @@ fun ThemeSettingsScreen(settings: SettingsStore, onBack: () -> Unit) {
                             startAction = { RowIcon(MiuixIcons.Hide) },
                         )
                     }
-                    SwitchPreference(
-                        title = "预测性返回手势",
-                        summary = if (android.os.Build.VERSION.SDK_INT >= 34)
-                            "返回时显示系统预览动画" else "需要 Android 14+",
-                        checked = settings.predictiveBack,
-                        onCheckedChange = { settings.predictiveBack = it },
-                        enabled = android.os.Build.VERSION.SDK_INT >= 34,
-                        startAction = { RowIcon(MiuixIcons.Forward) },
-                    )
-                }
-            }
-
-            item {
-                SmallTitle("页面缩放")
-                Card(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    SliderPreference(
-                        title = "全局界面密度",
-                        value = settings.pageScale,
-                        onValueChange = { settings.pageScale = it },
-                        valueText = "${(settings.pageScale * 100).toInt()}%",
-                        valueRange = 0.8f..1.1f,
-                    )
                 }
             }
         }

@@ -15,6 +15,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -62,20 +63,23 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lxithral.mjegg.R
 import com.lxithral.mjegg.egg.MjAccessibilityService
 import com.lxithral.mjegg.platform.SettingsStore
 import com.lxithral.mjegg.ui.component.KeepAliveRows
 import com.lxithral.mjegg.ui.component.LockIcon
-import com.lxithral.mjegg.ui.component.PermissionRow
+import com.lxithral.mjegg.ui.component.StatusRow
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -115,7 +119,7 @@ private const val DISPLAY_OS_ANDO_MS = 2500L    // displayOsAndoDelay 兜底
 private const val BUTTON_IN_DELAY_MS = 1340L    // startPageBtnAnim setDelay(1340)
 private const val BUTTON_IN_DUR_MS = 450        // FolmeEase.cubicOut(450)
 private const val BUTTON_ENABLE_DELAY_MS = 1000L // delayEnableButton
-private const val MORPH_MS = 550                // makeScaleUpAnim 卡片缩放转场(放慢更优雅)
+private const val MORPH_MS = 505                // makeScaleUpAnim 转场(照抄 505ms 恢复窗口)
 private const val PAGE_SLIDE_MS = 500           // 页间翻页(放慢 + 视差淡出)
 
 // —— 真机参考图逐像素取色（勿改）——
@@ -123,6 +127,7 @@ private val WORDMARK_INDIGO = Color(0xFF3939AB)   // 首屏/完成页字标
 private val BUTTON_INDIGO = Color(0xFF33356E)    // 首屏圆钮（玻璃暗紫）
 private val STATE_TEXT_INDIGO = Color(0xFF515497) // 完成页「设置完毕」
 private val BTN_LITE = Color(0x99000000)         // provision_next_lite: 60% 黑圆
+private const val FOREGROUND_FILL = 0x99000000   // anim_foreground_color(非模糊前景遮罩)
 private val PROVISION_BLUE = Color(0xFF3482FF)   // provision_confirm_background / 线描图标
 private val CHECK_BLUE = Color(0xFF277AF7)       // provision_picker_btn_radio
 private val MJ_LOGO_RED = Color(0xFFE0342F)      // MJ logo 底色（原版红方块）
@@ -192,11 +197,12 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
         val rootWdp = with(density) { rootW.toDp() }
         val rootHdp = with(density) { rootH.toDp() }
 
-        // 转场期间旧页(首屏)在卡片后面模糊 —— 录屏实测是模糊不是压黑
+        // 旧页处理(照抄 getAnimForeGroundColor 语义): 模糊开=旧页模糊(录屏实测的系统效果),
+        // 非模糊=前景遮罩 #99000000 压暗(遮罩画在下面的转场层里)
         Box(
             Modifier
                 .fillMaxSize()
-                .then(if (morphActive) Modifier.blur(20.dp) else Modifier)
+                .then(if (morphActive && blurGlass) Modifier.blur(20.dp) else Modifier)
         ) {
             // —— 页间翻页: 500ms 平滑滑动 + 旧页 30% 视差淡出(用户反馈 350ms 太快不优雅) ——
             // 0↔1 由卡片缩放转场驱动, 这里平地替换(被转场层遮住)
@@ -260,11 +266,14 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
             }
         }
 
-        // —— makeScaleUpAnim 转场层: 圆角卡片 bounds 从按钮 morph 到全屏 ——
-        // 卡片内是权限页**按 bounds 比例缩放**的真内容(录屏实测内容随窗口缩放)
+        // —— makeScaleUpAnim 转场层(照抄 StartupFragment.buildPickPageAnimation 语义) ——
+        // captureRoundedBitmap = 按钮**整圆裁剪截图**, 转场中从按钮 bounds 放大铺满:
+        // 起手是圆钮外观(底色+白箭头随 bounds 等比放大), 页面内容随窗口比例缩放渐显,
+        // 前景遮罩 #99000000 压旧页(模糊开时改用旧页模糊, 见上层)。
         val bounds = buttonBounds
         if (morphActive && bounds != null) {
             val p = morphP.value
+            val surface = MiuixTheme.colorScheme.surface
             val bw = bounds.width
             val bh = bounds.height
             val w = bw + (rootW - bw) * p
@@ -272,6 +281,16 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
             val cx = bounds.center.x + (rootW / 2f - bounds.center.x) * p
             val cy = bounds.center.y + (rootH / 2f - bounds.center.y) * p
             val corner = with(density) { (bw / 2f * (1f - p)).toDp() }
+            val layerAlpha = 0.78f + 0.22f * p
+
+            if (!blurGlass) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = layerAlpha }
+                        .background(Color(FOREGROUND_FILL))
+                )
+            }
 
             Box(
                 modifier = Modifier
@@ -281,9 +300,15 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
                         with(density) { h.toDp() },
                     )
                     .clip(RoundedCornerShape(corner))
-                    .graphicsLayer { alpha = 0.78f + 0.22f * p },
+                    .background(
+                        lerp(
+                            if (blurGlass) BUTTON_INDIGO else BTN_LITE,
+                            surface,
+                            (p * 3f).coerceAtMost(1f),
+                        )
+                    ),
             ) {
-                // 强制按全屏排版后整体缩放进卡片(transformOrigin 左上)
+                // 页面内容随窗口比例缩放(录屏实测内容随窗口走), 飞行中略半透明
                 Box(
                     Modifier
                         .requiredSize(rootWdp, rootHdp)
@@ -291,9 +316,24 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
                             scaleX = w / rootW
                             scaleY = h / rootH
                             transformOrigin = TransformOrigin(0f, 0f)
+                            alpha = layerAlpha
                         }
                 ) {
                     PermissionStep(onBack = {}, onNext = {})
+                }
+                // 按钮外观层: 白箭头随 bounds 等比放大, 前 20% 渐隐(圆位图 → 窗口的手感)
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val k = w / bw
+                            scaleX = k
+                            scaleY = k
+                            alpha = (1f - p / 0.2f).coerceIn(0f, 1f)
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ArrowIcon()
                 }
             }
         }
@@ -493,54 +533,14 @@ private fun BackIcon() {
     }
 }
 
-/** 权限页预览图标: 蓝色线描盾牌+对勾(70dp, 无底框, 对齐参考线描风格)。 */
+/** 预览图标 —— HyperCeiler provision_service_state/provision_basic_settings vector 逐字照抄 */
 @Composable
-private fun ShieldIcon() {
-    Canvas(Modifier.size(70.dp)) {
-        val u = size.minDimension / 100f
-        val stroke = Stroke(width = 6f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        val shield = Path().apply {
-            moveTo(50f * u, 10f * u)
-            lineTo(84f * u, 23f * u)
-            lineTo(84f * u, 50f * u)
-            cubicTo(84f * u, 70f * u, 70f * u, 85f * u, 50f * u, 92f * u)
-            cubicTo(30f * u, 85f * u, 16f * u, 70f * u, 16f * u, 50f * u)
-            lineTo(16f * u, 23f * u)
-            close()
-        }
-        drawPath(shield, PROVISION_BLUE, style = stroke)
-        val check = Path().apply {
-            moveTo(36f * u, 50f * u)
-            lineTo(46f * u, 61f * u)
-            lineTo(66f * u, 40f * u)
-        }
-        drawPath(check, PROVISION_BLUE, style = stroke)
-    }
-}
-
-/** 基础设置页预览图标: 蓝色线描滑块(70dp)。 */
-@Composable
-private fun SlidersIcon() {
-    Canvas(Modifier.size(70.dp)) {
-        val u = size.minDimension / 100f
-        val stroke = Stroke(width = 6f * u, cap = StrokeCap.Round)
-        fun row(y: Float, knobX: Float) {
-            val line = Path().apply {
-                moveTo(16f * u, y * u)
-                lineTo(84f * u, y * u)
-            }
-            drawPath(line, PROVISION_BLUE, style = stroke)
-            drawCircle(
-                PROVISION_BLUE,
-                radius = 10f * u,
-                center = Offset(knobX * u, y * u),
-                style = Stroke(width = 6f * u),
-            )
-        }
-        row(28f, 62f)
-        row(50f, 36f)
-        row(72f, 58f)
-    }
+private fun PreviewImage(resId: Int) {
+    Image(
+        painter = painterResource(resId),
+        contentDescription = null,
+        modifier = Modifier.size(70.dp),
+    )
 }
 
 /**
@@ -685,21 +685,22 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
 
     GuidePage(
         title = "权限设置",
-        subtitle = "彩蛋靠无障碍服务只读监听聊天输入框的文本变化。\n全程只读，不会替你打字或发消息。",
-        icon = { ShieldIcon() },
+        subtitle = "彩蛋靠无障碍服务只读监听聊天输入框的文本变化\n全程只读 不会替你打字或发消息",
+        icon = { PreviewImage(R.drawable.oobe_ic_permission) },
         onBack = onBack,
         nextEnabled = connected || enabledInSettings,
         onNext = onNext,
     ) {
         Column(Modifier.fillMaxWidth()) {
-            PermissionRow(
-                title = "无障碍服务（必需）",
+            // 未开启 → 尾部右箭头(提示可点), 已开启 → 对勾(miuix 标准行)
+            StatusRow(
+                title = "无障碍服务",
                 checked = connected || enabledInSettings,
                 onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
             )
             Text(
-                text = if (connected) "已连接，正在收事件。您可以稍后在「设置」中更改。"
-                else "点按该行前往系统设置开启；开启后返回本页即可继续。",
+                text = if (connected) "已连接 正在收事件\n您可以稍后在「设置」中更改"
+                else "点按该行前往系统设置开启\n开启后返回本页即可继续",
                 color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
@@ -722,12 +723,18 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
 private fun KeepAliveStep(onBack: () -> Unit, onNext: () -> Unit) {
     GuidePage(
         title = "保活设置",
-        subtitle = "彩蛋要在后台收事件。请允许自启动、关闭省电限制，并在最近任务里锁定本应用；否则息屏久了会收不到 mj。",
+        subtitle = "彩蛋要在后台收事件\n请允许自启动、关闭省电限制 并在最近任务里锁定本应用\n否则息屏久了会收不到 mj",
         icon = { LockIcon() },
         onBack = onBack,
         onNext = onNext,
     ) {
-        KeepAliveRows()
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        ) {
+            KeepAliveRows()
+        }
     }
 }
 
@@ -736,8 +743,8 @@ private fun KeepAliveStep(onBack: () -> Unit, onNext: () -> Unit) {
 private fun BasicStep(settings: SettingsStore, onBack: () -> Unit, onNext: () -> Unit) {
     GuidePage(
         title = "基础设置",
-        subtitle = "选择要监控的聊天应用，随时可以在「功能」页改。",
-        icon = { SlidersIcon() },
+        subtitle = "选择要监控的聊天应用 随时可以在「功能」页改",
+        icon = { PreviewImage(R.drawable.oobe_ic_basic_settings) },
         onBack = onBack,
         onNext = onNext,
     ) {

@@ -58,13 +58,13 @@ fun HomeScreen(
         !settings.eggEnabled -> "彩蛋已停用"
         connected -> "彩蛋运行中"
         // 勾了但没连上: 多半是系统没绑定成功(或被 ROM 杀了), 这是最容易误判的一种状态
-        enabledInSettings -> "服务已勾选, 但没连上"
+        enabledInSettings -> "服务已勾选 但没连上"
         else -> "无障碍服务未开启"
     }
     val summary = when {
         !settings.eggEnabled -> "打开下面的开关即可恢复"
         connected -> "已监控 $targets 个应用 · 累计触发 ${settings.triggerCount} 次"
-        enabledInSettings -> "系统没绑定上服务: 去无障碍设置里关掉、再重新打开一次"
+        enabledInSettings -> "系统没绑定上服务 去无障碍设置里关掉、再重新打开一次"
         else -> "点下方按钮去系统设置里授权"
     }
 
@@ -110,7 +110,7 @@ fun HomeScreen(
                     BasicComponent(
                         title = if (enabledInSettings) "重新打开无障碍服务" else "去开启无障碍服务",
                         summary = if (enabledInSettings)
-                            "先在系统设置里关掉 MJ 彩蛋, 再重新打开"
+                            "先在系统设置里关掉 MJ 彩蛋 再重新打开"
                         else
                             "在「无障碍 → 已安装的服务」里打开 MJ 彩蛋",
                         onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
@@ -133,9 +133,9 @@ fun HomeScreen(
             SmallTitle("怎么用")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
-                    text = "在微信、QQ、钉钉或抖音的聊天输入框里输入 mj 并发送，" +
-                            "全屏会播放一段带透明通道的蜘蛛侠动画，播完自动消失，" +
-                            "不挡操作也不会抢焦点。",
+                    text = "在微信、QQ、钉钉或抖音的聊天输入框里输入 mj 并发送\n" +
+                            "全屏会播放一段带透明通道的蜘蛛侠动画 播完自动消失\n" +
+                            "不挡操作也不会抢焦点",
                     modifier = Modifier.padding(16.dp),
                     color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     fontSize = MiuixTheme.textStyles.body2.fontSize,

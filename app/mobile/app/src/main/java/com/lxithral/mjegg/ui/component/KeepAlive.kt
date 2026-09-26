@@ -10,16 +10,9 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -28,9 +21,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
@@ -40,94 +31,81 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /*
  * 保后台(保活)组件 —— 解决"服务显示已连接但收不到事件"的运行时根因:
  *   HyperOS 省电/后台策略会冻结纯服务进程(息屏久了发 mj 没反应), 重装 APK 后
- *   事件派发也会被冻住(重启手机或重开无障碍才恢复)。
+ *   事件派发也会被冻住(重启手机或重开无障碍恢复)。
  *
- * 三项设置里「自启动」「忽略电池优化」可从 app 内引导完成,
- * 「锁定后台」系统无开放接口, 只能提示用户去最近任务下拉加锁。
- * 用法: OOBE「保活设置」页与设置页「保后台」组共用 [KeepAliveRows]。
+ * 行样式严格走 miuix 标准: BasicComponent(56dp 高 / 16dp 内边距 / 17sp Medium 标题 /
+ * 14sp summary) + 尾部配件(已开启=Check 20dp primary, 未开启/未知=ArrowRight 10×16dp)。
+ * 用法: OOBE「保活设置」页与设置页「保后台」组共用 [KeepAliveRows], 调用方包 Card。
  */
 
-private val CHECK_BLUE = Color(0xFF277AF7)   // provision_picker_btn_radio
-private val ICON_BLUE = Color(0xFF3482FF)    // 线描图标
+private val ICON_BLUE = Color(0xFF3482FF)    // 线描图标(provision 蓝)
 
-/** 权限行 —— PermissionItemView 样式: 56dp 圆角行, 左标题, 右蓝 check(未勾=占位)。 */
+/**
+ * 状态行 —— miuix BasicComponent 定制行:
+ * checked=true 显示对勾(Check 20dp primary), 否则显示右箭头(提示可点)。
+ * checked=null 表示"探测不到", 同样只显示箭头(用户接受检测不到就算了)。
+ */
 @Composable
-fun PermissionRow(
+fun StatusRow(
     title: String,
-    checked: Boolean,
+    checked: Boolean?,
+    summary: String? = null,
     onClick: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .height(56.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MiuixTheme.colorScheme.surfaceContainer)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-    ) {
-        Text(
-            text = title,
-            color = MiuixTheme.colorScheme.onSurface,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.align(Alignment.CenterStart),
-        )
-        Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-            if (checked) CheckIcon()
-            else Spacer(Modifier.size(24.dp))
-        }
-    }
+    BasicComponent(
+        title = title,
+        summary = summary,
+        onClick = onClick,
+        endActions = { StatusRowEnd(checked) },
+    )
 }
 
-/** provision_picker_btn_radio 64×64 蓝色对勾, 落位 24dp。 */
 @Composable
-fun CheckIcon() {
-    Canvas(Modifier.size(24.dp)) {
-        val s = size.width / 64f
-        val path = Path().apply {
-            moveTo(50.8171f * s, 22.1514f * s)
-            cubicTo(52.0496f * s, 20.6624f * s, 51.8417f * s, 18.4561f * s, 50.3527f * s, 17.2235f * s)
-            cubicTo(48.8636f * s, 15.991f * s, 46.6573f * s, 16.1989f * s, 45.4247f * s, 17.6879f * s)
-            lineTo(26.9535f * s, 40.0031f * s)
-            lineTo(17.4007f * s, 30.4502f * s)
-            cubicTo(16.0338f * s, 29.0833f * s, 13.8177f * s, 29.0833f * s, 12.4509f * s, 30.4502f * s)
-            cubicTo(11.0841f * s, 31.817f * s, 11.0841f * s, 34.0331f * s, 12.4509f * s, 35.3999f * s)
-            lineTo(24.7077f * s, 47.6567f * s)
-            cubicTo(25.7244f * s, 48.6734f * s, 27.2109f * s, 48.9338f * s, 28.4683f * s, 48.4381f * s)
-            cubicTo(29.016f * s, 48.2302f * s, 29.519f * s, 47.8817f * s, 29.9192f * s, 47.3982f * s)
-            close()
-        }
-        drawPath(path, CHECK_BLUE)
+private fun RowScope.StatusRowEnd(checked: Boolean?) {
+    if (checked == true) {
+        Icon(
+            imageVector = MiuixIcons.Basic.Check,
+            contentDescription = null,
+            tint = MiuixTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp),
+        )
+    } else {
+        Icon(
+            imageVector = MiuixIcons.Basic.ArrowRight,
+            contentDescription = null,
+            tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+            modifier = Modifier.size(10.dp, 16.dp),
+        )
     }
 }
 
-/** 保活页预览图标: 蓝色线描挂锁(70dp)。 */
+/** 保活页预览图标: 蓝色线描挂锁(70dp, 对齐 provision 线描风格)。 */
 @Composable
 fun LockIcon() {
     Canvas(Modifier.size(70.dp)) {
         val u = size.minDimension / 100f
-        val stroke = Stroke(width = 6f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val stroke = Stroke(width = 7f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
         val body = Path().apply {
-            addRoundRect(RoundRect(22f * u, 44f * u, 78f * u, 88f * u, CornerRadius(10f * u, 10f * u)))
+            addRoundRect(RoundRect(22f * u, 44f * u, 78f * u, 88f * u, CornerRadius(12f * u, 12f * u)))
         }
         drawPath(body, ICON_BLUE, style = stroke)
         val shackle = Path().apply {
             moveTo(34f * u, 46f * u)
-            lineTo(34f * u, 32f * u)
-            cubicTo(34f * u, 18f * u, 66f * u, 18f * u, 66f * u, 32f * u)
+            lineTo(34f * u, 33f * u)
+            cubicTo(34f * u, 18f * u, 66f * u, 18f * u, 66f * u, 33f * u)
             lineTo(66f * u, 46f * u)
         }
         drawPath(shackle, ICON_BLUE, style = stroke)
@@ -164,7 +142,7 @@ fun requestIgnoreBatteryOptimizations(context: Context) {
 
 /**
  * 自启动是否已允许。MIUI/HyperOS 用 appops `android:auto_start` 记录,
- * 不是公开常量 —— 读不到时返回 null(界面按"未确认"显示, 不显示对勾)。
+ * 不是公开常量 —— 读不到时返回 null(界面不显对勾)。
  */
 fun isAutoStartAllowed(context: Context): Boolean? = runCatching {
     val appOps = context.getSystemService(AppOpsManager::class.java) ?: return@runCatching null
@@ -176,6 +154,25 @@ fun isAutoStartAllowed(context: Context): Boolean? = runCatching {
         else -> null
     }
 }.getOrNull()
+
+/**
+ * 锁定后台是否已开启。MIUI 的"最近任务锁定"没有公开查询接口 ——
+ * 这里对 MIUI 扩展 appops 名做尽力探测, 名字不存在会抛异常 → null(界面不显对勾)。
+ */
+fun isBackgroundLocked(context: Context): Boolean? {
+    val appOps = context.getSystemService(AppOpsManager::class.java) ?: return null
+    for (op in listOf("miui:lock_background", "android:locked_app")) {
+        val mode = runCatching {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(op, Process.myUid(), context.packageName)
+        }.getOrNull() ?: continue
+        when (mode) {
+            AppOpsManager.MODE_ALLOWED -> return true
+            else -> return null
+        }
+    }
+    return null
+}
 
 /** 打开自启动管理(MIUI 安全中心), 不支持则退到应用详情页。 */
 fun openAutoStartSettings(context: Context) {
@@ -214,39 +211,43 @@ fun KeepAliveRows() {
     }
     var autoStart by remember { mutableStateOf(isAutoStartAllowed(context)) }
     var ignoringBattery by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    var bgLocked by remember { mutableStateOf(isBackgroundLocked(context)) }
     LaunchedEffect(refreshTick) {
         autoStart = isAutoStartAllowed(context)
         ignoringBattery = isIgnoringBatteryOptimizations(context)
+        bgLocked = isBackgroundLocked(context)
     }
 
-    Column(Modifier.fillMaxWidth()) {
-        PermissionRow(
+    Column {
+        StatusRow(
             title = "允许自启动",
-            checked = autoStart == true,
+            summary = "被禁止时系统会冻结服务 收不到 mj",
+            checked = autoStart,
             onClick = {
                 openAutoStartSettings(context)
                 autoStart = isAutoStartAllowed(context)
             },
         )
-        Spacer(Modifier.height(10.dp))
-        PermissionRow(
-            title = "忽略电池优化（省电无限制）",
+        StatusRow(
+            title = "忽略电池优化",
+            summary = "省电策略设为无限制 息屏久了也能收事件",
             checked = ignoringBattery,
             onClick = {
                 requestIgnoreBatteryOptimizations(context)
                 ignoringBattery = isIgnoringBatteryOptimizations(context)
             },
         )
-        Spacer(Modifier.height(10.dp))
-        PermissionRow(
+        StatusRow(
             title = "锁定后台",
-            checked = false,
+            summary = "在最近任务里把本应用卡片下拉加锁",
+            checked = bgLocked,
             onClick = {
                 Toast.makeText(
                     context,
-                    "打开最近任务（多任务界面），把「MJ 彩蛋」卡片往下拉即可锁定后台",
+                    "打开最近任务（多任务界面） 把「MJ 彩蛋」卡片往下拉即可锁定后台",
                     Toast.LENGTH_LONG,
                 ).show()
+                bgLocked = isBackgroundLocked(context)
             },
         )
     }

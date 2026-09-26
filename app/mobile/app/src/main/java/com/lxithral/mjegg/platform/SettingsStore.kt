@@ -28,8 +28,11 @@ class SettingsStore private constructor(context: Context) {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     // ---------- 外观 ----------
+    // AMOLED 纯黑模式入口已删除, 历史值一次性迁移到深色(两者观感映射一致)
     private var colorModeState by mutableStateOf(
-        enumOf(prefs.getString(K_COLOR_MODE, null), ColorMode.SYSTEM)
+        enumOf(prefs.getString(K_COLOR_MODE, null), ColorMode.SYSTEM).let {
+            if (it == ColorMode.AMOLED) ColorMode.DARK else it
+        }
     )
 
     /** 深色模式：跟随系统 / 浅色 / 深色 / AMOLED 纯黑。 */
@@ -94,8 +97,14 @@ class SettingsStore private constructor(context: Context) {
             prefs.edit().putBoolean(K_ENABLE_BLUR, v).apply()
         }
 
+    // 底栏默认形态按系统版本: Android 13+(API 33) 默认液态玻璃(要 RuntimeShader),
+    // 更低版本默认标准底栏。只在"用户没设过"时生效。
     private var bottomBarStyleState by mutableStateOf(
-        enumOf(prefs.getString(K_BOTTOM_BAR, null), BottomBarStyle.STANDARD)
+        enumOf(
+            prefs.getString(K_BOTTOM_BAR, null),
+            if (android.os.Build.VERSION.SDK_INT >= 33) BottomBarStyle.LIQUID_GLASS
+            else BottomBarStyle.STANDARD,
+        )
     )
 
     /** 底栏形态：标准 / 悬浮 / 液态玻璃。改完立即重组换形态。 */
@@ -116,25 +125,7 @@ class SettingsStore private constructor(context: Context) {
             prefs.edit().putBoolean(K_NAV_BADGE, v).apply()
         }
 
-    private var predictiveBackState by mutableStateOf(prefs.getBoolean(K_PREDICTIVE_BACK, false))
-
-    /** 预测性返回手势（API 34+，走运行时反射）。 */
-    var predictiveBack: Boolean
-        get() = predictiveBackState
-        set(v) {
-            predictiveBackState = v
-            prefs.edit().putBoolean(K_PREDICTIVE_BACK, v).apply()
-        }
-
-    private var pageScaleState by mutableStateOf(prefs.getFloat(K_PAGE_SCALE, 1f))
-
-    /** 页面缩放（0.8–1.1）。 */
-    var pageScale: Float
-        get() = pageScaleState
-        set(v) {
-            pageScaleState = v
-            prefs.edit().putFloat(K_PAGE_SCALE, v).apply()
-        }
+    // (预测性返回手势开关与页面缩放滑条已按需求删除, 返回行为跟随系统)
 
     // ---------- 彩蛋 ----------
     private var eggEnabledState by mutableStateOf(prefs.getBoolean(K_EGG_ENABLED, true))
@@ -245,8 +236,6 @@ class SettingsStore private constructor(context: Context) {
     fun updateEnableBlur(v: Boolean) { enableBlur = v }
     fun updateBottomBarStyle(v: BottomBarStyle) { bottomBarStyle = v }
     fun updateNavigationBadge(v: Boolean) { navigationBadge = v }
-    fun updatePredictiveBack(v: Boolean) { predictiveBack = v }
-    fun updatePageScale(v: Float) { pageScale = v.coerceIn(0.8f, 1.1f) }
     fun updateEggEnabled(v: Boolean) { eggEnabled = v }
     fun updateTargetWeChat(v: Boolean) { targetWeChat = v }
     fun updateTargetQQ(v: Boolean) { targetQQ = v }
@@ -275,8 +264,6 @@ class SettingsStore private constructor(context: Context) {
         private const val K_ENABLE_BLUR = "enable_blur"
         private const val K_BOTTOM_BAR = "bottom_bar_style"
         private const val K_NAV_BADGE = "enable_navigation_badge"
-        private const val K_PREDICTIVE_BACK = "enable_predictive_back"
-        private const val K_PAGE_SCALE = "page_scale"
         private const val K_EGG_ENABLED = "egg_enabled"
         private const val K_TARGET_WECHAT = "target_wechat"
         private const val K_TARGET_QQ = "target_qq"

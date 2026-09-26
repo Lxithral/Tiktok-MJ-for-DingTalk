@@ -82,7 +82,7 @@ fun AboutScreen(onBack: () -> Unit) {
             SmallTitle("说明")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
-                    text = "本应用只读取已授权目标应用的无障碍事件，不注入按键、不模拟点击、不自动发送消息。",
+                    text = "本应用只读取已授权目标应用的无障碍事件 不注入按键、不模拟点击、不自动发送消息",
                     modifier = Modifier.padding(16.dp),
                     color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     fontSize = MiuixTheme.textStyles.body2.fontSize,

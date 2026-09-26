@@ -97,7 +97,7 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     if (verdict.isEmpty()) {
                         Text(
-                            text = "还没有数据。去微信/QQ/钉钉/抖音里发一条 mj，再回来这里看。",
+                            text = "还没有数据\n去微信/QQ/钉钉/抖音里发一条 mj 再回来这里看",
                             color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                             fontSize = MiuixTheme.textStyles.body2.fontSize,
                         )
@@ -120,7 +120,7 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 ArrowPreference(
                     title = "导出当前窗口控件树",
-                    summary = "在目标应用的聊天页点一下，回来点这里 —— 看清它到底把什么暴露给了无障碍",
+                    summary = "在目标应用的聊天页点一下 回来点这里 —— 看清它到底把什么暴露给了无障碍",
                     onClick = {
                         MjAccessibilityService.instance?.dumpActiveWindowTree()
                             ?: run { EggDebug.log("控件树", "服务未连接") }
@@ -149,7 +149,7 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
                     title = "无障碍服务",
                     summary = when {
                         connected -> "已连接（正在收事件）"
-                        enabledInSettings -> "系统设置里已勾选, 但服务没连上 —— " +
+                        enabledInSettings -> "系统设置里已勾选 但服务没连上 —— " +
                                 "去无障碍设置关掉再打开一次"
                         else -> "未开启（先回主页点「去开启无障碍服务」）"
                     },
@@ -172,8 +172,8 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 if (nodes.isEmpty()) {
                     Text(
-                        text = "还没有观察到输入框。去微信/QQ/钉钉/抖音的聊天里点一下输入框，" +
-                                "回来这里就能看到客户端暴露的节点信息。",
+                        text = "还没有观察到输入框\n去微信/QQ/钉钉/抖音的聊天里点一下输入框\n" +
+                                "回来这里就能看到客户端暴露的节点信息",
                         modifier = Modifier.padding(16.dp),
                         color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                         fontSize = MiuixTheme.textStyles.body2.fontSize,
@@ -198,7 +198,7 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     if (lines.isEmpty()) {
                         Text(
-                            text = "暂无日志。",
+                            text = "暂无日志",
                             color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                             fontSize = MiuixTheme.textStyles.body2.fontSize,
                         )

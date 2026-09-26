@@ -59,7 +59,9 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
     }
 
     // 主页内返回：先回到第 0 个 Tab；已经在第 0 页才交给 NavDisplay/系统退出。
-    BackHandler(enabled = pagerState.currentPage != 0) {
+    // 只有本页是栈顶时才接管返回 —— 二级页(主题设置/诊断/关于)存活期间抢吃返回事件
+    // 会导致全面屏返回手势失灵。
+    BackHandler(enabled = pagerState.currentPage != 0 && navigator.backStackSize() == 1) {
         scope.launch { pagerState.animateScrollToPage(0) }
     }
 

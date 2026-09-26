@@ -112,9 +112,9 @@ fun FeatureScreen(
             SmallTitle("说明")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
-                    text = "只读取聊天输入框的文字变化来判断「你自己发送了 mj」，" +
-                            "不会注入按键、不会模拟点击、不会替你发消息。" +
-                            "两段动画（坠落 / 荡绳）会交替播放，分别贴右上角与左上角。",
+                    text = "只读取聊天输入框的文字变化来判断「你自己发送了 mj」\n" +
+                            "不会注入按键、不会模拟点击、不会替你发消息\n" +
+                            "两段动画（坠落 / 荡绳）会交替播放 分别贴右上角与左上角",
                     modifier = Modifier.padding(16.dp),
                     color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     fontSize = MiuixTheme.textStyles.body2.fontSize,

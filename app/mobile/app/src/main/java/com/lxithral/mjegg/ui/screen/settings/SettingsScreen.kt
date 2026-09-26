@@ -55,7 +55,9 @@ fun SettingsScreen(
 
         item {
             SmallTitle("保后台")
-            KeepAliveRows()
+            Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                KeepAliveRows()
+            }
         }
 
         if (settings.devUnlocked) {
