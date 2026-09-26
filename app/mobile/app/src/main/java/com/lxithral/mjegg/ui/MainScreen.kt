@@ -104,7 +104,8 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
                         androidx.compose.animation.core.tween(
                             230,
                             delayMillis = 60,
-                            easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                            // enter_home_anim: sine_in_out = pathInterpolator(0.37, 0, 0.63, 1)
+                            easing = androidx.compose.animation.core.CubicBezierEasing(0.37f, 0f, 0.63f, 1f),
                         ),
                     )
                 }
