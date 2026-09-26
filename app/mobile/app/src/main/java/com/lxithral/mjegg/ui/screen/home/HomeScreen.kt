@@ -1,12 +1,11 @@
 package com.lxithral.mjegg.ui.screen.home
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -18,21 +17,26 @@ import com.lxithral.mjegg.egg.MjAccessibilityService
 import com.lxithral.mjegg.platform.SettingsStore
 import com.lxithral.mjegg.ui.component.StatusCard
 import com.lxithral.mjegg.ui.component.StatusKind
+import com.lxithral.mjegg.ui.theme.resolveIsDark
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Send
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 @Composable
-fun HomeScreen(settings: SettingsStore, isDark: Boolean, themeKey: String) {
+fun HomeScreen(
+    settings: SettingsStore,
+    isDark: Boolean,
+    padding: PaddingValues,
+    scrollBehavior: ScrollBehavior,
+) {
     val context = LocalContext.current
 
     // 无障碍服务是系统持有的, 这里轮询它的连接状态(1 秒一次, 开销可忽略)
@@ -64,25 +68,17 @@ fun HomeScreen(settings: SettingsStore, isDark: Boolean, themeKey: String) {
         else -> "点下方按钮去系统设置里授权"
     }
 
-    val scrollBehavior = MiuixScrollBehavior()
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = "MJ 彩蛋",
-                largeTitle = "MJ 彩蛋",
-                scrollBehavior = scrollBehavior,
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Spacer(Modifier.height(4.dp))
-
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .overScrollVertical()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        contentPadding = PaddingValues(
+            top = padding.calculateTopPadding() + 4.dp,
+            bottom = padding.calculateBottomPadding() + 16.dp,
+        ),
+    ) {
+        item {
             StatusCard(
                 kind = kind,
                 title = title,
@@ -92,7 +88,9 @@ fun HomeScreen(settings: SettingsStore, isDark: Boolean, themeKey: String) {
                 watermark = MiuixIcons.Send,
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
+        }
 
+        item {
             SmallTitle("快捷开关")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 BasicComponent(
@@ -103,8 +101,10 @@ fun HomeScreen(settings: SettingsStore, isDark: Boolean, themeKey: String) {
                     },
                 )
             }
+        }
 
-            if (!connected) {
+        if (!connected) {
+            item {
                 SmallTitle("授权")
                 Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                     BasicComponent(
@@ -117,7 +117,9 @@ fun HomeScreen(settings: SettingsStore, isDark: Boolean, themeKey: String) {
                     )
                 }
             }
+        }
 
+        item {
             SmallTitle("触发规则")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 InfoRow("触发词", "mj / mjmj / MJ / MjMj …")
@@ -125,7 +127,9 @@ fun HomeScreen(settings: SettingsStore, isDark: Boolean, themeKey: String) {
                 InfoRow("只响应自己发送的", "对方发的 mj 不会触发")
                 InfoRow("生效范围", "微信 / QQ / 钉钉 / 抖音 的聊天输入框")
             }
+        }
 
+        item {
             SmallTitle("怎么用")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
@@ -137,8 +141,6 @@ fun HomeScreen(settings: SettingsStore, isDark: Boolean, themeKey: String) {
                     fontSize = MiuixTheme.textStyles.body2.fontSize,
                 )
             }
-
-            Spacer(Modifier.height(24.dp))
         }
     }
 }

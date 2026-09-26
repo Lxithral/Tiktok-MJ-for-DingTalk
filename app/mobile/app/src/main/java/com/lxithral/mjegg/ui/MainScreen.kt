@@ -1,14 +1,16 @@
 package com.lxithral.mjegg.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.lxithral.mjegg.platform.BottomBarStyle
 import com.lxithral.mjegg.platform.SettingsStore
 import com.lxithral.mjegg.ui.navigation.BottomBar
 import com.lxithral.mjegg.ui.navigation.LocalNavigator
@@ -18,30 +20,41 @@ import com.lxithral.mjegg.ui.screen.home.HomeScreen
 import com.lxithral.mjegg.ui.screen.settings.SettingsScreen
 import com.lxithral.mjegg.ui.theme.resolveIsDark
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 主界面：miuix Scaffold + HorizontalPager（3 个一级 Tab：主页/功能/设置）+ 液态玻璃底栏。
+ * 主界面：3 个一级 Tab（主页/功能/设置）+ 液态玻璃底栏。
  *
- * 重要边界：HorizontalPager 只负责一级 Tab；主题/诊断/关于等二级页全部交给
- * 外层 miuix-nav 返回栈，不能再用布尔变量在这里模拟页面跳转。
- *
- * **采样层必须铺满全屏**（含底栏后面）：`layerBackdrop` 挂在吃 inset 的内层 Box 上时,
- * 底栏玻璃采样到的下层是未绘制区域, 渲染成一整块黑 —— 这就是"底栏下面有黑块"的根源。
- * 所以这里外层全屏 Box 只挂采样, 内层才吃 bottomBar 的 padding。
+ * 玻璃采样（参照 ADBKit 的成熟实现，修"底栏下方一整块黑"）：
+ * - `rememberLayerBackdrop { drawRect(surface); drawContent() }` **先铺一层 surface 底色**，
+ *   页面内容没画到的区域（底栏后面）采样到的是 surface，而不是未定义的纯黑；
+ * - 采样层挂全屏 Pager，页面内容用 contentPadding 避让栏，内容能延伸到栏后面，
+ *   玻璃折射采到的就是真实内容；
+ * - 单一外层 TopAppBar（标题随 Tab 切换），折叠行为由各页 LazyColumn 的 nestedScroll 驱动；
+ * - `contentWindowInsets` 只吃导航栏 inset，状态栏 inset 由 TopAppBar 自己处理（否则标题偏低）。
  */
 @Composable
 fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { 3 })
+    val topAppBarState = rememberTopAppBarState()
+    val scrollBehavior = MiuixScrollBehavior(topAppBarState)
     val scope = rememberCoroutineScope()
-    val backdrop = rememberLayerBackdrop()
     val isDark = resolveIsDark(settings.colorMode)
     val navigator = LocalNavigator.current
-    val themeKey = remember(settings.colorMode, settings.monet, settings.keyColor) {
-        "${settings.colorMode}-${settings.monet}-${settings.keyColor}"
+    val surfaceColor = MiuixTheme.colorScheme.surface
+
+    val liquidGlassActive = settings.bottomBarStyle == BottomBarStyle.LIQUID_GLASS &&
+            settings.enableBlur && isRuntimeShaderSupported()
+
+    val backdrop = rememberLayerBackdrop {
+        drawRect(surfaceColor)
+        drawContent()
     }
 
     // 主页内返回：先回到第 0 个 Tab；已经在第 0 页才交给 NavDisplay/系统退出。
@@ -50,38 +63,47 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
     }
 
     Scaffold(
-        bottomBar = {
-            BottomBar(
-                settings = settings,
-                pagerState = pagerState,
-                backdrop = backdrop,
-                isDark = isDark,
+        topBar = {
+            TopAppBar(
+                title = when (pagerState.currentPage) {
+                    0 -> "MJ 彩蛋"
+                    1 -> "功能"
+                    else -> "设置"
+                },
+                largeTitle = when (pagerState.currentPage) {
+                    0 -> "MJ 彩蛋"
+                    1 -> "功能"
+                    else -> "设置"
+                },
+                scrollBehavior = scrollBehavior,
             )
-        }
+        },
+        bottomBar = {
+            BottomBar(settings = settings, pagerState = pagerState, backdrop = backdrop)
+        },
+        contentWindowInsets = WindowInsets.navigationBars,
     ) { padding ->
-        Box(
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop)
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            ) { page ->
-                when (page) {
-                    0 -> HomeScreen(settings, isDark, themeKey)
-                    1 -> FeatureScreen(settings)
-                    else -> SettingsScreen(
-                        settings = settings,
-                        isDark = isDark,
-                        onOpenTheme = { navigator.push(Route.ThemeSettings) },
-                        onOpenDiagnostics = { navigator.push(Route.Diagnostics) },
-                        onOpenAbout = { navigator.push(Route.About) },
-                        onRerunOobe = onRerunOobe,
-                    )
-                }
+                .then(
+                    if (liquidGlassActive) Modifier.layerBackdrop(backdrop) else Modifier
+                ),
+            beyondViewportPageCount = 1,
+        ) { page ->
+            when (page) {
+                0 -> HomeScreen(settings, isDark, padding, scrollBehavior)
+                1 -> FeatureScreen(settings, padding, scrollBehavior)
+                else -> SettingsScreen(
+                    settings = settings,
+                    padding = padding,
+                    scrollBehavior = scrollBehavior,
+                    onOpenTheme = { navigator.push(Route.ThemeSettings) },
+                    onOpenDiagnostics = { navigator.push(Route.Diagnostics) },
+                    onOpenAbout = { navigator.push(Route.About) },
+                    onRerunOobe = onRerunOobe,
+                )
             }
         }
     }

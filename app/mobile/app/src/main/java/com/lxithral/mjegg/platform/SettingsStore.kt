@@ -202,7 +202,10 @@ class SettingsStore private constructor(context: Context) {
             prefs.edit().putInt(K_VOLUME, v).apply()
         }
 
-    private var overlayHeightState by mutableStateOf(prefs.getInt(K_HEIGHT, 85))
+    // 动画高度: 默认 100%(全屏高度)。旧版本默认 85, 读到 85 视为"用户没改过", 一次性迁移到 100
+    private var overlayHeightState by mutableStateOf(prefs.getInt(K_HEIGHT, 100).let {
+        if (it == 85) 100 else it
+    })
     var overlayHeight: Int
         get() = overlayHeightState
         set(v) {

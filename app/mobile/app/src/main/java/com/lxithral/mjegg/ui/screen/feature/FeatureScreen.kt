@@ -1,12 +1,9 @@
 package com.lxithral.mjegg.ui.screen.feature
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -14,38 +11,33 @@ import androidx.compose.ui.unit.dp
 import com.lxithral.mjegg.egg.MjAccessibilityService
 import com.lxithral.mjegg.platform.SettingsStore
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 
-/** 功能页: 监控哪些应用 + 播放参数 + 手动测试。 */
+/** 功能页: 监控哪些应用 + 播放参数 + (开发者)手动测试。 */
 @Composable
-fun FeatureScreen(settings: SettingsStore) {
-    val scrollBehavior = MiuixScrollBehavior()
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = "功能",
-                largeTitle = "功能",
-                scrollBehavior = scrollBehavior,
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Spacer(Modifier.height(4.dp))
-
+fun FeatureScreen(
+    settings: SettingsStore,
+    padding: PaddingValues,
+    scrollBehavior: ScrollBehavior,
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .overScrollVertical()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        contentPadding = PaddingValues(
+            top = padding.calculateTopPadding() + 4.dp,
+            bottom = padding.calculateBottomPadding() + 16.dp,
+        ),
+    ) {
+        item {
             SmallTitle("监控的应用")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 SwitchPreferenceRow(
@@ -73,7 +65,9 @@ fun FeatureScreen(settings: SettingsStore) {
                     onCheckedChange = settings::updateTargetDouyin,
                 )
             }
+        }
 
+        item {
             SmallTitle("播放")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 if (settings.devUnlocked) {
@@ -99,8 +93,8 @@ fun FeatureScreen(settings: SettingsStore) {
                     title = "动画高度",
                     summary = "占屏幕高度的比例",
                     valueText = "${settings.overlayHeight}%",
-                    valueRange = 30f..120f,
-                    steps = 17,
+                    valueRange = 30f..150f,
+                    steps = 23,
                 )
                 SliderPreference(
                     value = settings.cooldownSeconds.toFloat(),
@@ -112,7 +106,9 @@ fun FeatureScreen(settings: SettingsStore) {
                     steps = 29,
                 )
             }
+        }
 
+        item {
             SmallTitle("说明")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
@@ -124,12 +120,11 @@ fun FeatureScreen(settings: SettingsStore) {
                     fontSize = MiuixTheme.textStyles.body2.fontSize,
                 )
             }
-
-            Spacer(Modifier.height(24.dp))
         }
     }
 }
 
+/** 开关行(miuix SwitchPreference)。 */
 @Composable
 private fun SwitchPreferenceRow(
     title: String,
@@ -137,11 +132,10 @@ private fun SwitchPreferenceRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    top.yukonga.miuix.kmp.basic.BasicComponent(
+    SwitchPreference(
         title = title,
         summary = summary,
-        endActions = {
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
-        },
+        checked = checked,
+        onCheckedChange = onCheckedChange,
     )
 }
