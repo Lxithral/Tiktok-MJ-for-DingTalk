@@ -3,6 +3,7 @@ package com.lxithral.mjegg.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -42,8 +43,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { 3 })
-    val topAppBarState = rememberTopAppBarState()
-    val scrollBehavior = MiuixScrollBehavior(topAppBarState)
+    val scrollBehavior = MiuixScrollBehavior()
     val scope = rememberCoroutineScope()
     val isDark = resolveIsDark(settings.colorMode)
     val navigator = LocalNavigator.current
@@ -79,7 +79,12 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
             )
         },
         bottomBar = {
-            BottomBar(settings = settings, pagerState = pagerState, backdrop = backdrop)
+            BottomBar(
+                settings = settings,
+                pagerState = pagerState,
+                backdrop = backdrop,
+                isDark = isDark,
+            )
         },
         contentWindowInsets = WindowInsets.navigationBars,
     ) { padding ->

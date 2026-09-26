@@ -1,26 +1,22 @@
 package com.lxithral.mjegg.ui.screen.settings
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.lxithral.mjegg.platform.SettingsStore
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 /**
- * 设置主页 —— 只放「入口」：外观/排查(开发者)/关于。
+ * 设置主页 —— 只放「入口」：外观/开发者模式/关于。
  *
  * 不重复展示主题设置里已有的开关(动态取色/深色模式/底栏形态)，
  * 不重复展示主页状态卡已有的无障碍服务状态。
@@ -28,31 +24,24 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 @Composable
 fun SettingsScreen(
     settings: SettingsStore,
-    isDark: Boolean,
+    padding: PaddingValues,
+    scrollBehavior: ScrollBehavior,
     onOpenTheme: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenAbout: () -> Unit,
     onRerunOobe: () -> Unit,
 ) {
-    val scrollBehavior = MiuixScrollBehavior()
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = "设置",
-                largeTitle = "设置",
-                scrollBehavior = scrollBehavior,
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Spacer(Modifier.height(4.dp))
-
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .overScrollVertical()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        contentPadding = PaddingValues(
+            top = padding.calculateTopPadding() + 4.dp,
+            bottom = padding.calculateBottomPadding() + 16.dp,
+        ),
+    ) {
+        item {
             SmallTitle("外观")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 ArrowPreference(
@@ -61,8 +50,10 @@ fun SettingsScreen(
                     onClick = onOpenTheme,
                 )
             }
+        }
 
-            if (settings.devUnlocked) {
+        if (settings.devUnlocked) {
+            item {
                 SmallTitle("开发者模式")
                 Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                     ArrowPreference(
@@ -77,7 +68,9 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
 
+        item {
             SmallTitle("关于")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 ArrowPreference(
@@ -86,8 +79,6 @@ fun SettingsScreen(
                     onClick = onOpenAbout,
                 )
             }
-
-            Spacer(Modifier.height(24.dp))
         }
     }
 }

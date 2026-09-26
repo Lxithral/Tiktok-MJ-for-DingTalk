@@ -1,8 +1,9 @@
 package com.lxithral.mjegg.ui.screen.settings
 
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
@@ -14,6 +15,7 @@ import com.lxithral.mjegg.platform.ColorMode
 import com.lxithral.mjegg.platform.SettingsStore
 import com.lxithral.mjegg.ui.theme.ThemePalette
 import com.lxithral.mjegg.ui.theme.paletteNameOf
+import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -24,18 +26,29 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Forward
+import top.yukonga.miuix.kmp.icon.extended.Hide
+import top.yukonga.miuix.kmp.icon.extended.Layers
+import top.yukonga.miuix.kmp.icon.extended.Photos
+import top.yukonga.miuix.kmp.icon.extended.Theme
+import top.yukonga.miuix.kmp.icon.extended.Tune
+import top.yukonga.miuix.kmp.icon.extended.Update
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.ThemeColorSpec
 import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 /**
- * 主题设置二级页。
+ * 主题设置二级页（按套壳指南 02 = KernelSU ColorPaletteScreenMiuix 拆解）:
  *
- * 按套壳指南：滚动内容接 `nestedScroll` 让大标题自动折叠；
- * 分段选择用 miuix `TabRow`，枚举下拉用 `OverlayDropdownPreference`，
- * 开关/滑条用 `SwitchPreference` / `SliderPreference`，不自绘选择行。
+ * - 大标题折叠: MiuixScrollBehavior + LazyColumn nestedScroll;
+ * - 深色模式: TabRow 三段 + AMOLED 纯黑叠加;
+ * - 配色卡层层展开: Monet 开关 → 主题色(16 色) → 调色板风格/规范版本(选了自定义色才出现);
+ * - 底栏: 形态三选一; 效果: 启用模糊(API 33+ 才显示)/预测性返回(API 34+ 才显示);
+ * - 每行左侧小图标(startAction)。
  */
 @Composable
 fun ThemeSettingsScreen(settings: SettingsStore, onBack: () -> Unit) {
@@ -73,8 +86,12 @@ fun ThemeSettingsScreen(settings: SettingsStore, onBack: () -> Unit) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .overScrollVertical()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
+            contentPadding = PaddingValues(
+                top = padding.calculateTopPadding() + 4.dp,
+                bottom = padding.calculateBottomPadding() + 16.dp,
+            ),
         ) {
             item {
                 SmallTitle("深色模式")
@@ -90,126 +107,147 @@ fun ThemeSettingsScreen(settings: SettingsStore, onBack: () -> Unit) {
                     },
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
-                SwitchPreference(
-                    title = "纯黑背景 AMOLED",
-                    summary = "深色模式下使用纯黑背景，省电并适合 OLED 屏幕",
-                    checked = settings.colorMode == ColorMode.AMOLED,
-                    onCheckedChange = { enabled ->
-                        settings.colorMode = if (enabled) ColorMode.AMOLED else ColorMode.DARK
-                    },
-                    enabled = settings.colorMode == ColorMode.DARK || settings.colorMode == ColorMode.AMOLED,
-                )
+                Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    SwitchPreference(
+                        title = "纯黑背景 AMOLED",
+                        summary = "深色模式下使用纯黑背景，省电并适合 OLED 屏幕",
+                        checked = settings.colorMode == ColorMode.AMOLED,
+                        onCheckedChange = { enabled ->
+                            settings.colorMode = if (enabled) ColorMode.AMOLED else ColorMode.DARK
+                        },
+                        enabled = settings.colorMode == ColorMode.DARK || settings.colorMode == ColorMode.AMOLED,
+                        startAction = { RowIcon(MiuixIcons.Theme) },
+                    )
+                }
             }
 
             item {
                 SmallTitle("动态取色")
-                SwitchPreference(
-                    title = "Monet 动态取色",
-                    summary = if (settings.monet) "跟随系统壁纸配色" else "使用下方预设主题色",
-                    checked = settings.monet,
-                    onCheckedChange = { settings.monet = it },
-                )
-                OverlayDropdownPreference(
-                    title = "主题色",
-                    summary = "当前：${paletteNameOf(settings.keyColor)}",
-                    items = paletteItems,
-                    selectedIndex = paletteIndex,
-                    onSelectedIndexChange = { index -> settings.keyColor = ThemePalette[index].argb },
-                    showValue = true,
-                )
-                if (settings.monet) {
-                    OverlayDropdownPreference(
-                        title = "调色板风格",
-                        summary = "Monet 色彩生成风格",
-                        items = styleItems,
-                        selectedIndex = styleIndex,
-                        onSelectedIndexChange = { index ->
-                            settings.colorStyle = ThemePaletteStyle.entries[index]
-                        },
-                        showValue = true,
+                Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    SwitchPreference(
+                        title = "Monet 动态取色",
+                        summary = if (settings.monet) "跟随系统壁纸配色" else "使用下方预设主题色",
+                        checked = settings.monet,
+                        onCheckedChange = { settings.monet = it },
+                        startAction = { RowIcon(MiuixIcons.Theme) },
                     )
-                }
-                if (settings.keyColor != 0) {
-                    OverlayDropdownPreference(
-                        title = "规范版本",
-                        summary = "主题色生成规范",
-                        items = specItems,
-                        selectedIndex = specIndex,
-                        onSelectedIndexChange = { index ->
-                            settings.colorSpec = if (index == 1) ThemeColorSpec.Spec2025
-                            else ThemeColorSpec.Spec2021
-                        },
-                        showValue = true,
-                    )
+                    AnimatedVisibility(visible = settings.monet) {
+                        Column {
+                            OverlayDropdownPreference(
+                                title = "主题色",
+                                summary = "当前：${paletteNameOf(settings.keyColor)}",
+                                items = paletteItems,
+                                selectedIndex = paletteIndex,
+                                onSelectedIndexChange = { index -> settings.keyColor = ThemePalette[index].argb },
+                                showValue = true,
+                                startAction = { RowIcon(MiuixIcons.Tune) },
+                            )
+                            AnimatedVisibility(visible = settings.keyColor != 0) {
+                                Column {
+                                    OverlayDropdownPreference(
+                                        title = "调色板风格",
+                                        summary = "Monet 色彩生成风格",
+                                        items = styleItems,
+                                        selectedIndex = styleIndex,
+                                        onSelectedIndexChange = { index ->
+                                            settings.colorStyle = ThemePaletteStyle.entries[index]
+                                        },
+                                        showValue = true,
+                                        startAction = { RowIcon(MiuixIcons.Photos) },
+                                    )
+                                    OverlayDropdownPreference(
+                                        title = "规范版本",
+                                        summary = "主题色生成规范",
+                                        items = specItems,
+                                        selectedIndex = specIndex,
+                                        onSelectedIndexChange = { index ->
+                                            settings.colorSpec = if (index == 1) ThemeColorSpec.Spec2025
+                                            else ThemeColorSpec.Spec2021
+                                        },
+                                        showValue = true,
+                                        startAction = { RowIcon(MiuixIcons.Update) },
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
             item {
                 SmallTitle("底栏")
-                OverlayDropdownPreference(
-                    title = "底栏形态",
-                    summary = "切换后立即生效",
-                    items = barItems,
-                    selectedIndex = barIndex,
-                    onSelectedIndexChange = { index ->
-                        settings.bottomBarStyle = BottomBarStyle.entries[index]
-                    },
-                    showValue = true,
-                )
+                Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    OverlayDropdownPreference(
+                        title = "底栏形态",
+                        summary = "切换后立即生效",
+                        items = barItems,
+                        selectedIndex = barIndex,
+                        onSelectedIndexChange = { index ->
+                            settings.bottomBarStyle = BottomBarStyle.entries[index]
+                        },
+                        showValue = true,
+                        startAction = { RowIcon(MiuixIcons.Layers) },
+                    )
+                }
             }
 
             item {
                 SmallTitle("效果")
-                SwitchPreference(
-                    title = "启用模糊",
-                    summary = if (blurSupported) "玻璃/毛玻璃效果总开关"
-                    else "本机不支持 RuntimeShader，玻璃自动降级为不透明",
-                    checked = settings.enableBlur && blurSupported,
-                    onCheckedChange = { settings.enableBlur = it },
-                    enabled = blurSupported,
-                )
-                SwitchPreference(
-                    title = "玻璃底栏",
-                    summary = if (settings.bottomBarStyle == BottomBarStyle.LIQUID_GLASS)
-                        "液态玻璃形态已选中" else "选中液态玻璃底栏后生效",
-                    checked = settings.bottomBarStyle == BottomBarStyle.LIQUID_GLASS && settings.enableBlur,
-                    onCheckedChange = { enabled ->
-                        settings.bottomBarStyle = if (enabled) BottomBarStyle.LIQUID_GLASS
-                        else BottomBarStyle.FLOATING
-                    },
-                    enabled = blurSupported && settings.enableBlur,
-                )
-                SwitchPreference(
-                    title = "预测性返回手势",
-                    summary = "Android 14+ 返回时显示系统预览动画",
-                    checked = settings.predictiveBack,
-                    onCheckedChange = { settings.predictiveBack = it },
-                    enabled = android.os.Build.VERSION.SDK_INT >= 34,
-                )
-                SliderPreference(
-                    title = "页面缩放",
-                    summary = "全局界面密度",
-                    value = settings.pageScale,
-                    onValueChange = { settings.pageScale = it },
-                    valueText = "${(settings.pageScale * 100).toInt()}%",
-                    valueRange = 0.8f..1.1f,
-                    steps = 29,
-                )
+                Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    if (blurSupported) {
+                        SwitchPreference(
+                            title = "启用模糊",
+                            summary = "玻璃/毛玻璃效果总开关",
+                            checked = settings.enableBlur,
+                            onCheckedChange = { settings.enableBlur = it },
+                            startAction = { RowIcon(MiuixIcons.Hide) },
+                        )
+                    }
+                    SwitchPreference(
+                        title = "预测性返回手势",
+                        summary = if (android.os.Build.VERSION.SDK_INT >= 34)
+                            "返回时显示系统预览动画" else "需要 Android 14+",
+                        checked = settings.predictiveBack,
+                        onCheckedChange = { settings.predictiveBack = it },
+                        enabled = android.os.Build.VERSION.SDK_INT >= 34,
+                        startAction = { RowIcon(MiuixIcons.Forward) },
+                    )
+                }
             }
 
-            item { Spacer(Modifier.height(28.dp)) }
+            item {
+                SmallTitle("页面缩放")
+                Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    SliderPreference(
+                        title = "全局界面密度",
+                        value = settings.pageScale,
+                        onValueChange = { settings.pageScale = it },
+                        valueText = "${(settings.pageScale * 100).toInt()}%",
+                        valueRange = 0.8f..1.1f,
+                    )
+                }
+            }
         }
     }
 }
 
+@Composable
+private fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        modifier = Modifier.padding(end = 6.dp),
+        tint = MiuixTheme.colorScheme.onBackground,
+    )
+}
+
 private fun ThemePaletteStyle.displayName(): String = when (this) {
-    ThemePaletteStyle.TonalSpot -> "TonalSpot"
-    ThemePaletteStyle.Neutral -> "Neutral"
-    ThemePaletteStyle.Vibrant -> "Vibrant"
-    ThemePaletteStyle.Expressive -> "Expressive"
-    ThemePaletteStyle.Rainbow -> "Rainbow"
-    ThemePaletteStyle.FruitSalad -> "FruitSalad"
-    ThemePaletteStyle.Monochrome -> "Monochrome"
-    ThemePaletteStyle.Fidelity -> "Fidelity"
-    ThemePaletteStyle.Content -> "Content"
+    ThemePaletteStyle.TonalSpot -> "色调点"
+    ThemePaletteStyle.Neutral -> "中性"
+    ThemePaletteStyle.Vibrant -> "鲜艳"
+    ThemePaletteStyle.Expressive -> "表现"
+    ThemePaletteStyle.Rainbow -> "彩虹"
+    ThemePaletteStyle.FruitSalad -> "水果沙拉"
+    ThemePaletteStyle.Content -> "内容"
+    else -> name
 }
