@@ -56,11 +56,12 @@ fun AppNavigation(settings: com.lxithral.mjegg.platform.SettingsStore) {
             entry<Route.Oobe> {
                 OobeScreen(settings = settings, onDone = {
                     settings.oobeDone = true
+                    settings.pendingHomeEnterAnim = true   // 主页 1.3→1.0 弹簧进场(§8.2)
                     if (navigator.backStackSize() > 1 && navigator.backStack.contains(Route.Main)) {
                         // 从开发者模式重新进入的: 弹回首屏(保留设置页等路径)
                         navigator.popUntil { it is Route.Main }
                     } else {
-                        // 首启引导: 整栈替换为主页
+                        // 首启引导: 整栈替换为主页(等价 CLEAR_TASK, §8.2(c))
                         navigator.replace(Route.Main)
                     }
                 })

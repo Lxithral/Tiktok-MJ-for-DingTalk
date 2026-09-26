@@ -1,3 +1,10 @@
+/*
+ * 辉光 shader 出处：HyperCeiler `library/provision/res/raw/glow.glsl`（382 行）
+ * —— 逐字收录于《07-HyperCeiler-OOBE全链路逻辑与实现深挖》附录 A.1。
+ * 原仓库：https://github.com/ReChronoRain/HyperCeiler ｜ License: AGPL-3.0
+ * 唯一改动：PI/TWO_PI 全局变量加 const（AGSL 要求全局变量为 const，语义不变）。
+ * ⚠️ uColorBlack/uColorWhite 名不副实（实为红橙/深蓝紫），照抄数值勿按名翻译。
+ */
 package com.lxithral.mjegg.ui.screen.oobe
 
 /**

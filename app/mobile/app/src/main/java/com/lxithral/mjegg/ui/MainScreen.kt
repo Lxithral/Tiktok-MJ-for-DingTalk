@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.lxithral.mjegg.platform.BottomBarStyle
 import com.lxithral.mjegg.platform.SettingsStore
@@ -88,10 +89,42 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
         },
         contentWindowInsets = WindowInsets.navigationBars,
     ) { padding ->
+        // §8.2 enter_home_anim 接力: OOBE 完成后首帧 scale 1.3→1.0(619ms 弹簧 damping0.65)
+        // + alpha 0→1(230ms, startOffset 60, sine_in_out)
+        val homeEnter = settings.pendingHomeEnterAnim
+        if (homeEnter) settings.pendingHomeEnterAnim = false
+        val homeScale = remember { androidx.compose.animation.core.Animatable(if (homeEnter) 1.3f else 1f) }
+        val homeAlpha = remember { androidx.compose.animation.core.Animatable(if (homeEnter) 0f else 1f) }
+        androidx.compose.runtime.LaunchedEffect(homeEnter) {
+            if (!homeEnter) return@LaunchedEffect
+            kotlinx.coroutines.coroutineScope {
+                launch {
+                    homeAlpha.animateTo(
+                        1f,
+                        androidx.compose.animation.core.tween(
+                            230,
+                            delayMillis = 60,
+                            easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                        ),
+                    )
+                }
+                launch {
+                    homeScale.animateTo(
+                        1f,
+                        androidx.compose.animation.core.spring(dampingRatio = 0.65f, stiffness = 130f),
+                    )
+                }
+            }
+        }
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = homeScale.value
+                    scaleY = homeScale.value
+                    alpha = homeAlpha.value
+                }
                 .then(
                     if (liquidGlassActive) Modifier.layerBackdrop(backdrop) else Modifier
                 ),

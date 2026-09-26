@@ -187,6 +187,10 @@ class SettingsStore private constructor(context: Context) {
             prefs.edit().putBoolean(K_OOBE_DONE, v).apply()
         }
 
+    /** OOBE 完成 → 主页首帧进场动画接力标志(会话内存, 不持久化)。
+     *  主页读取后立即清掉, 播 scale 1.3→1.0 弹簧放大淡入(07 文档 §8.2 enter_home_anim)。 */
+    var pendingHomeEnterAnim: Boolean = false
+
     /**
      * 开发者模式: 普通用户用不到的测试入口(播放测试/诊断)默认隐藏,
      * 在「关于」页连点版本号 7 次解锁。**只在本进程内生效**——

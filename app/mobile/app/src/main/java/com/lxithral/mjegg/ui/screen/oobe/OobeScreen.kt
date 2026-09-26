@@ -122,6 +122,14 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
     val expandProgress = remember { Animatable(0f) }
     var buttonBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var lastTapAt by remember { mutableLongStateOf(0L) }
+    // §10 isFirstBoot 语义: 只有真正首次进入首屏才放 admission 圆环; 从下一页返回不放圈
+    var firstEntry by remember { mutableStateOf(true) }
+
+    // §3.5 transitToPrevious: OOBE 内系统返回 = 回上一步(镜像翻页), 首屏再返回才退出
+    androidx.activity.compose.BackHandler(enabled = step > 0) {
+        if (step == 1) firstEntry = false   // 回首屏不放圈(needAdmission(false))
+        step -= 1
+    }
 
     BoxWithConstraints(
         Modifier
@@ -150,22 +158,21 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
                 glowActive = glowActive,
                 blurGlass = blurGlass,
                 density = density,
+                admission = firstEntry,
                 onButtonBounds = { buttonBounds = it },
                 buttonHidden = expanding,
                 onExpand = {
                     val now = System.currentTimeMillis()
                     if (!expanding && now - lastTapAt > DEBOUNCE_MS) {
                         lastTapAt = now
+                        firstEntry = false   // §10: 点按钮进第一页即视为非首次
                         expanding = true
                     }
                 },
             )
 
-            1 -> GuideStep(
-                title = "开启无障碍服务",
-                subtitle = "彩蛋靠无障碍服务只读监听聊天输入框的文本变化。\n全程只读，不会替你打字或发消息。",
-                onNext = { step = 2 },
-            ) {
+            1 -> {
+                // §13 单门控范式: 服务可用才允许下一步, 否则灰 0.5; 1s 轮询实时刷新
                 val a11y by produceState(initialValue = false to false) {
                     while (true) {
                         value = MjAccessibilityService.isConnected() to
@@ -174,26 +181,33 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
                     }
                 }
                 val (connected, enabledInSettings) = a11y
-                Card(Modifier.fillMaxWidth()) {
-                    Box(Modifier.padding(16.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = when {
-                                connected -> "✓ 已连接（正在收事件）"
-                                enabledInSettings -> "系统已勾选，但服务未连接 —— 请关闭后重新打开一次"
-                                else -> "尚未开启"
-                            },
-                            color = if (connected) MiuixTheme.colorScheme.primary
-                            else MiuixTheme.colorScheme.onSurfaceContainerVariant,
-                            fontWeight = FontWeight.Bold,
-                        )
+                GuideStep(
+                    title = "开启无障碍服务",
+                    subtitle = "彩蛋靠无障碍服务只读监听聊天输入框的文本变化。\n全程只读，不会替你打字或发消息。",
+                    onNext = { step = 2 },
+                    nextEnabled = connected || enabledInSettings,
+                ) {
+                    Card(Modifier.fillMaxWidth()) {
+                        Box(Modifier.padding(16.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = when {
+                                    connected -> "✓ 已连接（正在收事件）"
+                                    enabledInSettings -> "系统已勾选，但服务未连接 —— 请关闭后重新打开一次"
+                                    else -> "尚未开启"
+                                },
+                                color = if (connected) MiuixTheme.colorScheme.primary
+                                else MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
-                }
-                if (!connected) {
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("去系统设置开启") }
+                    if (!connected) {
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("去系统设置开启") }
+                    }
                 }
             }
 
@@ -271,12 +285,13 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
     }
 }
 
-/** 首屏（§1 布局比例 / §5 入场时序 / §6 按钮样式）。 */
+/** 首屏（§1 布局比例 / §5 入场时序 / §6 按钮样式）。admission=是否播放开场圆环+遮罩（§5.6）。 */
 @Composable
 private fun SplashStep(
     glowActive: Boolean,
     blurGlass: Boolean,
     density: Density,
+    admission: Boolean,
     onButtonBounds: (androidx.compose.ui.geometry.Rect) -> Unit,
     buttonHidden: Boolean,
     onExpand: () -> Unit,
@@ -285,6 +300,7 @@ private fun SplashStep(
     GlowCanvas(
         modifier = Modifier.fillMaxSize(),
         active = glowActive,
+        admission = admission,
         circleYOffsetFrac = 0.30f + 45f / 1000f, // logo 中心 ≈ 上30% + 45dp
     )
 
@@ -308,7 +324,14 @@ private fun SplashStep(
         }
         logoScale.animateTo(0.95f, tween(440, easing = SIN_OUT))
         logoScale.animateTo(1f, tween(700, easing = CUBIC_OUT))
-        // 2500ms displayOsAndoDelay: logo 显示态收敛（HyperCeiler 内部节拍, 无额外可见动作）
+    }
+    // §10 displayOsAndoDelay 兜底: 2500ms 强制恢复 logo/按钮可见可点,
+    // 防动画回调未触发导致按钮永久不可点
+    LaunchedEffect(Unit) {
+        delay(2500)
+        buttonIn = true
+        logoAlpha.snapTo(1f)
+        logoScale.snapTo(1f)
     }
 
     val btnScale by animateFloatAsState(
@@ -447,12 +470,14 @@ private fun ArrowIcon() {
     }
 }
 
-/** 向导页（§7 排版 + §5 centerPageAnim/endPageAnim 入场 + §4.2 翻页由 AnimatedContent 承担）。 */
+/** 向导页（§7 排版 + §5 centerPageAnim/endPageAnim 入场 + §4.2 翻页由 AnimatedContent 承担）。
+ *  §13 门控范式: nextEnabled=false 时「下一步」置灰 0.5 alpha 不可点, 状态恢复自动亮起。 */
 @Composable
 private fun GuideStep(
     title: String,
     subtitle: String,
     onNext: () -> Unit,
+    nextEnabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     // centerPageAnim: 中部内容 alpha 500ms + translationY 30dp→0
@@ -514,11 +539,15 @@ private fun GuideStep(
                 .fillMaxWidth()
                 .padding(horizontal = 35.dp)
                 .graphicsLayer {
-                    alpha = endAlpha.value
+                    alpha = endAlpha.value * if (nextEnabled) 1f else 0.5f
                     translationY = endY.value * 3f
                 },
         ) {
-            Button(onClick = onNext, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onNext,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = nextEnabled,
+            ) {
                 Text("下一步", fontWeight = FontWeight.Bold)
             }
         }
@@ -529,21 +558,72 @@ private fun GuideStep(
 /** 完成页: 辉光 + logo + 32sp 标题 + 14sp 副标题。 */
 @Composable
 private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit) {
+    // §8.1: 完成页辉光用 start(false) —— 无圈仅流动背景
     GlowCanvas(
         modifier = Modifier.fillMaxSize(),
         active = glowActive,
+        admission = false,
         circleYOffsetFrac = 0.35f,
     )
+
+    // §8.1 入场: logo translationY 100→0(quartOut 1500ms)+alpha; 按钮 alpha sinOut 450ms 延迟 1000ms
+    val logoY = remember { Animatable(if (glowActive) 100f else 0f) }
+    val logoAlpha = remember { Animatable(if (glowActive) 0f else 1f) }
+    val btnAlpha = remember { Animatable(if (glowActive) 0f else 1f) }
+    // §8.2 (a) 点「开始使用」引导内容缩 1→0.8 弹簧 + 淡出 sinOut 360ms, 播完才接力主页
+    val pageScale = remember { Animatable(1f) }
+    val pageAlpha = remember { Animatable(1f) }
+    var leaving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!glowActive) return@LaunchedEffect
+        coroutineScope {
+            // quartOut(1500ms) ≈ CubicBezier(0.25,1,0.5,1)
+            launch {
+                logoY.animateTo(0f, tween(1500, easing = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)))
+                logoAlpha.animateTo(1f, tween(600))
+            }
+            launch {
+                delay(1000)          // 按钮延迟浮现
+                btnAlpha.animateTo(1f, tween(450, easing = SIN_OUT))
+            }
+        }
+    }
+
+    if (leaving) {
+        LaunchedEffect(Unit) {
+            coroutineScope {
+                launch {
+                    // spring(1.0, 0.36) 弹簧缩小
+                    pageScale.animateTo(0.8f, spring(dampingRatio = 0.36f, stiffness = 400f))
+                }
+                launch {
+                    pageAlpha.animateTo(0f, tween(360, easing = SIN_OUT))
+                }
+            }
+            onDone()   // (b) 接力: 主页 1.3→1.0 弹簧放大淡入(MainScreen 侧播)
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 35.dp),
+            .padding(horizontal = 35.dp)
+            .graphicsLayer {
+                scaleX = pageScale.value
+                scaleY = pageScale.value
+                alpha = pageAlpha.value
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(120.dp))
         Box(
             modifier = Modifier
                 .size(90.dp)
+                .graphicsLayer {
+                    translationY = logoY.value * 3f
+                    alpha = logoAlpha.value
+                }
                 .clip(RoundedCornerShape(22.dp))
                 .background(if (blurGlass) GLASS_GREY else Color(0xFF1A1A22)),
             contentAlignment = Alignment.Center,
@@ -569,7 +649,12 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
             )
         }
         Spacer(Modifier.weight(1f))
-        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = { if (!leaving) leaving = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { alpha = btnAlpha.value },
+        ) {
             Text("开始使用", fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(40.dp))
@@ -577,12 +662,18 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
 }
 
 /**
- * 辉光画布（附录 A GlowPainter uniform 全表 + GlowController tickPingPong）:
- * 0.2× 分辨率渲染放大、16ms 帧循环、uTime ping-pong 2↔120。
+ * 辉光画布（附录 A GlowPainter uniform 全表 + GlowController tickPingPong + RenderViewLayout）:
+ * 0.2× 分辨率渲染放大（画布居中+黑底）、16ms 帧循环、uTime ping-pong 2↔120（从 0 起步）。
+ * admission=false 时 uShowCircle=0（不放开场圆环，仅流动背景——对应 needAdmission(false)）。
  * active=false(lite) 时退化为静态深色渐变。
  */
 @Composable
-private fun GlowCanvas(modifier: Modifier, active: Boolean, circleYOffsetFrac: Float) {
+private fun GlowCanvas(
+    modifier: Modifier,
+    active: Boolean,
+    admission: Boolean,
+    circleYOffsetFrac: Float,
+) {
     if (!active) {
         Box(
             modifier.background(
@@ -614,7 +705,7 @@ private fun GlowCanvas(modifier: Modifier, active: Boolean, circleYOffsetFrac: F
             setFloatUniform("uBrightnessInMax", 1.0f)
             setFloatUniform("uBrightnessOutMin", 0.25f)
             setFloatUniform("uBrightnessOutMax", 1.0f)
-            setFloatUniform("uShowCircle", 1.0f)
+            setFloatUniform("uShowCircle", if (admission) 1.0f else 0.0f)
             setFloatUniform("uCircleThickness", 0.4f)
             setFloatUniform("uCircleFinalRadius", 1.0f)
             setFloatUniform("uCircleSpeed", 0.9f)
@@ -641,8 +732,8 @@ private fun GlowCanvas(modifier: Modifier, active: Boolean, circleYOffsetFrac: F
     }.getOrNull()   // shader 异常(如个别机型 AGSL 兼容性)时回退静态背景, 不崩溃
     }
 
-    // GlowController.tickPingPong: uTime 真实时间推进, 2↔120 往返
-    val time = remember { Animatable(2f) }
+    // GlowController: uTime 从 0 起步, ping-pong 2↔120 真实时间推进
+    val time = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         var dir = 1f
         var last = System.nanoTime()
@@ -658,34 +749,40 @@ private fun GlowCanvas(modifier: Modifier, active: Boolean, circleYOffsetFrac: F
     }
 
     Box(modifier) {
-        // 0.2× 分辨率渲染 + 放大（RenderViewLayout 同款策略）
+        // RenderViewLayout 同款策略: 0.2× 分辨率渲染 + 放大; 画布**居中**且黑底(attachView 的 -16777216)
         Box(
-            Modifier
-                .fillMaxWidth(0.2f)
-                .fillMaxHeight(0.2f)
-                .graphicsLayer {
-                    scaleX = 5f
-                    scaleY = 5f
-                    transformOrigin = TransformOrigin(0f, 0f)
-                }
-                .drawBehind {
-                    val s = shader
-                    if (s == null) {
-                        drawRect(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                listOf(Color(0xFF0A0A12), Color(0xFF12121E))
-                            )
-                        )
-                        return@drawBehind
+            Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(0.2f)
+                    .fillMaxHeight(0.2f)
+                    .background(Color.Black)
+                    .graphicsLayer {
+                        scaleX = 5f
+                        scaleY = 5f
+                        transformOrigin = TransformOrigin(0.5f, 0.5f)
                     }
-                    s.setFloatUniform("uResolution", size.width, size.height)
-                    s.setFloatUniform("uTime", time.value)
-                    s.setFloatUniform(
-                        "uCircleYOffset",
-                        (size.height / 2f - circleYOffsetFrac * size.height) / size.height,
-                    )
-                    drawRect(ShaderBrush(s))
-                }
-        )
+                    .drawBehind {
+                        val s = shader
+                        if (s == null) {
+                            drawRect(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    listOf(Color(0xFF0A0A12), Color(0xFF12121E))
+                                )
+                            )
+                            return@drawBehind
+                        }
+                        s.setFloatUniform("uResolution", size.width, size.height)
+                        s.setFloatUniform("uTime", time.value)
+                        s.setFloatUniform(
+                            "uCircleYOffset",
+                            (size.height / 2f - circleYOffsetFrac * size.height) / size.height,
+                        )
+                        drawRect(ShaderBrush(s))
+                    }
+            )
+        }
     }
 }
