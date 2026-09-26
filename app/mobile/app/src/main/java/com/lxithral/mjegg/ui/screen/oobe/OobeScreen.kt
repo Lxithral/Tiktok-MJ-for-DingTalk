@@ -407,8 +407,11 @@ private fun SplashStep(
             }
             launch {
                 delay(BUTTON_IN_DELAY_MS)
-                btnScale.animateTo(1f, tween(BUTTON_IN_DUR_MS, easing = CUBIC_OUT))
-                btnAlpha.animateTo(1f, tween(BUTTON_IN_DUR_MS, easing = CUBIC_OUT))
+                // scale 与 alpha 必须并行（同 logo 写法）: 若串行, 缩放期 alpha=0 展开全程隐形
+                coroutineScope {
+                    launch { btnScale.animateTo(1f, tween(BUTTON_IN_DUR_MS, easing = CUBIC_OUT)) }
+                    launch { btnAlpha.animateTo(1f, tween(BUTTON_IN_DUR_MS, easing = CUBIC_OUT)) }
+                }
                 buttonReady = true
             }
         }
