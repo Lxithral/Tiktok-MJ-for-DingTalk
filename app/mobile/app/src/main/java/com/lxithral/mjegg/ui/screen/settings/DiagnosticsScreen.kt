@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -23,6 +24,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
@@ -68,15 +70,18 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
     val nodes = EggDebug.inputNodes
     val treeLines = EggDebug.treeLines
 
+    val scrollBehavior = MiuixScrollBehavior()
     Scaffold(
         topBar = {
             TopAppBar(
                 title = "诊断",
+                largeTitle = "诊断",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(MiuixIcons.Back, contentDescription = "返回")
                     }
                 },
+                scrollBehavior = scrollBehavior,
             )
         }
     ) { padding ->
@@ -84,6 +89,7 @@ fun DiagnosticsScreen(settings: SettingsStore, onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .verticalScroll(rememberScrollState())
         ) {
             SmallTitle("结论（每个应用分别断在哪一环）")

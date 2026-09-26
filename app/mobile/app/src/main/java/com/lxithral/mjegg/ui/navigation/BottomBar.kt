@@ -16,7 +16,6 @@ import com.lxithral.mjegg.platform.SettingsStore
 import com.lxithral.mjegg.ui.component.FloatingBottomBar
 import com.lxithral.mjegg.ui.component.FloatingBottomBarItem
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarDisplayMode
@@ -27,15 +26,14 @@ import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.icon.extended.Home
-import top.yukonga.miuix.kmp.icon.extended.Layers
 import top.yukonga.miuix.kmp.icon.extended.Settings
 
 /**
- * 底栏三形态 —— 按指南 §6 接入：
+ * 底栏：3 个一级 Tab（主页 / 功能 / 设置）。
  *
  * STANDARD      = miuix NavigationBar，贴底全宽；
  * FLOATING      = KernelSU 真实 FloatingBottomBar，胶囊贴内容宽、整体居中；
- * LIQUID_GLASS = 同一个 FloatingBottomBar 的 drawBackdrop + lens 分支，
+ * LIQUID_GLASS  = 同一个 FloatingBottomBar 的 drawBackdrop + lens 分支，
  *                 API 不支持或总开关关闭时自动回退实体 surface。
  */
 @Composable
@@ -49,7 +47,6 @@ fun BottomBar(
     val items = listOf(
         "主页" to MiuixIcons.Home,
         "功能" to MiuixIcons.GridView,
-        "模块" to MiuixIcons.Layers,
         "设置" to MiuixIcons.Settings,
     )
     val select: (Int) -> Unit = { index ->
@@ -57,13 +54,6 @@ fun BottomBar(
     }
     val liquidEnabled = settings.bottomBarStyle == BottomBarStyle.LIQUID_GLASS &&
             settings.enableBlur && isRuntimeShaderSupported()
-
-    @Composable
-    fun BadgeContent(index: Int) {
-        if (settings.navigationBadge && index == 2) {
-            Badge()
-        }
-    }
 
     when (settings.bottomBarStyle) {
         BottomBarStyle.STANDARD -> {
@@ -77,9 +67,6 @@ fun BottomBar(
                         onClick = { select(index) },
                         icon = icon,
                         label = label,
-                        badge = if (settings.navigationBadge && index == 2) {
-                            { BadgeContent(index) }
-                        } else null,
                     )
                 }
             }
@@ -105,10 +92,7 @@ fun BottomBar(
                             onClick = { select(index) },
                             modifier = Modifier.defaultMinSize(minWidth = 76.dp),
                         ) {
-                            Box(contentAlignment = Alignment.TopEnd) {
-                                Icon(icon, contentDescription = label)
-                                BadgeContent(index)
-                            }
+                            Icon(icon, contentDescription = label)
                             Text(
                                 text = label,
                                 fontSize = 11.sp,

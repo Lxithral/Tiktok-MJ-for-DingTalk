@@ -156,12 +156,6 @@ fun ThemeSettingsScreen(settings: SettingsStore, onBack: () -> Unit) {
                     },
                     showValue = true,
                 )
-                SwitchPreference(
-                    title = "显示导航角标",
-                    summary = "模块页有更新时在底栏显示红点",
-                    checked = settings.navigationBadge,
-                    onCheckedChange = { settings.navigationBadge = it },
-                )
             }
 
             item {

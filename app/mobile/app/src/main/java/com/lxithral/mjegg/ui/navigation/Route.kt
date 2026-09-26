@@ -13,7 +13,11 @@ import top.yukonga.miuix.kmp.nav.core.NavKey
 @Serializable
 sealed interface Route : NavKey {
 
-    /** 主页：4 Tab 的 HorizontalPager 宿主。它是栈底，永远不弹。 */
+    /** OOBE 首启引导（欢迎 → 无障碍 → 完成），仅 `oobe_done=false` 时作为初始页。 */
+    @Serializable
+    data object Oobe : Route
+
+    /** 主页：3 Tab 的 HorizontalPager 宿主。它是栈底，永远不弹。 */
     @Serializable
     data object Main : Route
 

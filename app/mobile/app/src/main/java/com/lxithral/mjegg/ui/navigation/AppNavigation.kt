@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import com.lxithral.mjegg.ui.MainScreen
 import com.lxithral.mjegg.ui.screen.about.AboutScreen
+import com.lxithral.mjegg.ui.screen.oobe.OobeScreen
 import com.lxithral.mjegg.ui.screen.settings.DiagnosticsScreen
 import com.lxithral.mjegg.ui.screen.settings.ThemeSettingsScreen
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
@@ -31,7 +32,9 @@ import top.yukonga.miuix.kmp.nav.transition.NavTransitions
  */
 @Composable
 fun AppNavigation(settings: com.lxithral.mjegg.platform.SettingsStore) {
-    val backStack = rememberNavBackStack(Route.Main)
+    // OOBE: 首次启动先进引导, 完成后 replace 成主页; 之后每次启动直接进主页
+    val start = if (settings.oobeDone) Route.Main else Route.Oobe
+    val backStack = rememberNavBackStack(start)
     val navigator = remember(backStack) { Navigator(backStack) }
 
     // 横滑返回方向是物理方向（miuix-nav 不自动镜像），RTL 下要反过来
@@ -50,8 +53,23 @@ fun AppNavigation(settings: com.lxithral.mjegg.platform.SettingsStore) {
                 cornerClipRadius = rememberNavSystemCornerRadius(),
             ),
         ) {
+            entry<Route.Oobe> {
+                OobeScreen(onDone = {
+                    settings.oobeDone = true
+                    if (navigator.backStackSize() > 1 && navigator.backStack.contains(Route.Main)) {
+                        // 从开发者模式重新进入的: 弹回首屏(保留设置页等路径)
+                        navigator.popUntil { it is Route.Main }
+                    } else {
+                        // 首启引导: 整栈替换为主页
+                        navigator.replace(Route.Main)
+                    }
+                })
+            }
             entry<Route.Main> {
-                MainScreen(settings)
+                MainScreen(settings, onRerunOobe = {
+                    settings.oobeDone = false
+                    navigator.push(Route.Oobe)
+                })
             }
             entry<Route.ThemeSettings>(swipeDismiss = swipeBackDirection) {
                 ThemeSettingsScreen(settings = settings, onBack = { navigator.pop() })

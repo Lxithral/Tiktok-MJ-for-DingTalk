@@ -178,6 +178,22 @@ class SettingsStore private constructor(context: Context) {
             prefs.edit().putBoolean(K_TARGET_DOUYIN, v).apply()
         }
 
+    /** OOBE 首启引导是否已完成(完成后不再进入欢迎流程)。 */
+    private var oobeDoneState by mutableStateOf(prefs.getBoolean(K_OOBE_DONE, false))
+    var oobeDone: Boolean
+        get() = oobeDoneState
+        set(v) {
+            oobeDoneState = v
+            prefs.edit().putBoolean(K_OOBE_DONE, v).apply()
+        }
+
+    /**
+     * 开发者模式: 普通用户用不到的测试入口(播放测试/诊断)默认隐藏,
+     * 在「关于」页连点版本号 7 次解锁。**只在本进程内生效**——
+     * 重开 App 恢复隐藏, 避免误触后常驻显示。
+     */
+    var devUnlocked: Boolean by mutableStateOf(false)
+
     private var volumeState by mutableStateOf(prefs.getInt(K_VOLUME, 100))
     var volume: Int
         get() = volumeState
@@ -259,6 +275,7 @@ class SettingsStore private constructor(context: Context) {
         private const val K_TARGET_QQ = "target_qq"
         private const val K_TARGET_DINGTALK = "target_dingtalk"
         private const val K_TARGET_DOUYIN = "target_douyin"
+        private const val K_OOBE_DONE = "oobe_done"
         private const val K_VOLUME = "volume"
         private const val K_HEIGHT = "overlay_height_ratio"
         private const val K_COOLDOWN = "cooldown_s"

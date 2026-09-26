@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.lxithral.mjegg.egg.MjAccessibilityService
@@ -20,6 +21,7 @@ import com.lxithral.mjegg.ui.component.StatusKind
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
@@ -62,15 +64,21 @@ fun HomeScreen(settings: SettingsStore, isDark: Boolean, themeKey: String) {
         else -> "点下方按钮去系统设置里授权"
     }
 
+    val scrollBehavior = MiuixScrollBehavior()
     Scaffold(
         topBar = {
-            TopAppBar(title = "MJ 彩蛋", largeTitle = "MJ 彩蛋")
+            TopAppBar(
+                title = "MJ 彩蛋",
+                largeTitle = "MJ 彩蛋",
+                scrollBehavior = scrollBehavior,
+            )
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(Modifier.height(4.dp))

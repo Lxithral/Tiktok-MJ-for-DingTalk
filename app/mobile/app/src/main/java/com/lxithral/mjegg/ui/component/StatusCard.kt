@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Refresh
@@ -68,6 +69,7 @@ fun StatusCard(
         modifier = modifier.fillMaxWidth(),
         cornerRadius = 16.dp,
         insideMargin = PaddingValues(0.dp),
+        pressFeedbackType = PressFeedbackType.Tilt,
     ) {
         Box(
             modifier = Modifier

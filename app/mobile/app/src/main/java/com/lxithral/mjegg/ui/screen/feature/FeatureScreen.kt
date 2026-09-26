@@ -9,10 +9,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.lxithral.mjegg.egg.MjAccessibilityService
 import com.lxithral.mjegg.platform.SettingsStore
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
@@ -25,13 +27,21 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** 功能页: 监控哪些应用 + 播放参数 + 手动测试。 */
 @Composable
 fun FeatureScreen(settings: SettingsStore) {
+    val scrollBehavior = MiuixScrollBehavior()
     Scaffold(
-        topBar = { TopAppBar(title = "功能", largeTitle = "功能") }
+        topBar = {
+            TopAppBar(
+                title = "功能",
+                largeTitle = "功能",
+                scrollBehavior = scrollBehavior,
+            )
+        }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(Modifier.height(4.dp))
@@ -66,12 +76,14 @@ fun FeatureScreen(settings: SettingsStore) {
 
             SmallTitle("播放")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
-                ArrowPreference(
-                    title = "播放测试",
-                    summary = if (MjAccessibilityService.isConnected()) "点一下立刻放一遍动画"
-                    else "需要先开启无障碍服务",
-                    onClick = { MjAccessibilityService.instance?.testPlay() },
-                )
+                if (settings.devUnlocked) {
+                    ArrowPreference(
+                        title = "播放测试",
+                        summary = if (MjAccessibilityService.isConnected()) "点一下立刻放一遍动画"
+                        else "需要先开启无障碍服务",
+                        onClick = { MjAccessibilityService.instance?.testPlay() },
+                    )
+                }
                 SliderPreference(
                     value = settings.volume.toFloat(),
                     onValueChange = { settings.updateVolume(it.toInt()) },
