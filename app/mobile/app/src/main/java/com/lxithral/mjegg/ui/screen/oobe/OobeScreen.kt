@@ -1,89 +1,277 @@
 package com.lxithral.mjegg.ui.screen.oobe
 
+import android.graphics.RuntimeShader
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lxithral.mjegg.egg.MjAccessibilityService
+import com.lxithral.mjegg.platform.SettingsStore
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Forward
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlin.math.roundToInt
 
 /**
- * OOBE 首启引导（按套壳指南 04 的节奏, 去掉用户协议页）:
+ * OOBE 首启引导（按套壳指南 04 = HyperCeiler provision 复刻，无用户协议页）：
  *
- * ① 欢迎 —— logo 弹性入场(translationY+alpha, ~1.7s) + 按钮延迟放大(0.98→1, 延迟 600ms);
- * ② 无障碍 —— 说明为什么需要(只读承诺) + 实时状态 + 一键跳系统设置;
- * ③ 完成 —— 提示去聊天里发一条 mj 试试。
- *
- * 完成后 `oobe_done=true`, 之后启动不再进入。
+ * 步骤 0 首屏：AGSL 彩色流动辉光背景（三团光晕随时间漂移）+ logo 两段弹性入场
+ *   （scale 0.5→0.95→1.0, 440ms+700ms）+ 文字标上浮（100dp→0 弹性 ~1.7s）+
+ *   白色大圆箭头按钮延迟 1340ms 浮现（0.9→1.0, 450ms）；
+ *   **点按钮：以按钮 bounds 为圆心放大铺满全屏**（前景色从白过渡到 surface），落地进引导。
+ * 步骤 1 无障碍（只读承诺 + 实时状态 + 跳系统设置）；
+ * 步骤 2 基础设置（监控哪些应用）；
+ * 步骤 3 完成（辉光背景 + 开始使用）。
  */
+private const val DEBOUNCE_MS = 2000L
+
 @Composable
-fun OobeScreen(onDone: () -> Unit) {
+fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     var step by remember { mutableIntStateOf(0) }
 
-    // 入场动画状态
-    var entered by remember { mutableStateOf(false) }
+    var expanding by remember { mutableStateOf(false) }
+    val expandProgress = remember { Animatable(0f) }
+    var buttonBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var lastTapAt by remember { mutableLongStateOf(0L) }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val rootW = constraints.maxWidth.toFloat()
+        val rootH = constraints.maxHeight.toFloat()
+
+        when (step) {
+            0 -> SplashStep(
+                density = density,
+                onButtonBounds = { buttonBounds = it },
+                onExpand = {
+                    val now = System.currentTimeMillis()
+                    if (!expanding && now - lastTapAt > DEBOUNCE_MS) {
+                        lastTapAt = now
+                        expanding = true
+                    }
+                },
+            )
+
+            1 -> PermissionStep(
+                onOpenSettings = { MjAccessibilityService.openAccessibilitySettings(context) },
+                onNext = { step = 2 },
+            )
+
+            2 -> BasicStep(settings, onNext = { step = 3 })
+
+            else -> DoneGlowStep(onDone = onDone)
+        }
+
+        // —— 招牌转场: 以大按钮 bounds 为圆心放大铺满全屏, 前景色白→surface ——
+        val bounds = buttonBounds
+        if (expanding && bounds != null) {
+            LaunchedEffect(Unit) {
+                expandProgress.snapTo(0f)
+                expandProgress.animateTo(
+                    1f,
+                    tween(450, easing = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)),
+                )
+                step = 1
+                expanding = false
+                expandProgress.snapTo(0f)
+            }
+            val p = expandProgress.value
+            val surface = MiuixTheme.colorScheme.surface
+            val btnW = with(density) { bounds.width.toDp() }
+            val btnH = with(density) { bounds.height.toDp() }
+            val rootWdp = with(density) { rootW.toDp() }
+            val rootHdp = with(density) { rootH.toDp() }
+            val w = btnW + (rootWdp - btnW) * p
+            val h = btnH + (rootHdp - btnH) * p
+            val x = with(density) { (bounds.center.x - w.toPx() / 2f).roundToInt() }
+            val y = with(density) { (bounds.center.y - h.toPx() / 2f).roundToInt() }
+            val corner = btnH / 2f * (1f - p)
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(x, y) }
+                    .size(w, h)
+                    .clip(RoundedCornerShape(corner))
+                    .background(lerp(Color.White, surface, p)),
+            )
+        }
+    }
+}
+
+/** 首屏: 辉光背景 + logo 两段弹性入场 + 文字标上浮 + 白色大圆箭头按钮。 */
+@Composable
+private fun SplashStep(
+    density: androidx.compose.ui.unit.Density,
+    onButtonBounds: (androidx.compose.ui.geometry.Rect) -> Unit,
+    onExpand: () -> Unit,
+) {
+    GlowBackground(Modifier.fillMaxSize())
+
     var buttonIn by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        entered = true
-        delay(600)
+        delay(1340)
         buttonIn = true
     }
-    val logoAlpha = androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (entered) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 60f),
-        label = "logoAlpha",
+    val btnScale = animateFloatAsState(
+        targetValue = if (buttonIn) 1f else 0.9f,
+        animationSpec = tween(450, easing = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)),
+        label = "btnScale",
     )
-    val logoOffsetY = androidx.compose.animation.core.animateDpAsState(
-        targetValue = if (entered) 0.dp else 100.dp,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 60f),
-        label = "logoOffsetY",
-    )
-    val buttonScale = androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (buttonIn) 1f else 0.98f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 200f),
-        label = "buttonScale",
+    val btnAlpha = animateFloatAsState(
+        targetValue = if (buttonIn) 1f else 0f,
+        animationSpec = tween(450),
+        label = "btnAlpha",
     )
 
-    // 无障碍实时状态(1s 轮询): 引导页开着时用户去系统设置开启, 回来自动变绿
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.weight(0.26f))
+
+        // logo 两段弹性: scale 0.5→0.95(440ms sinOut)→1.0(700ms cubicOut), alpha 延迟 60ms
+        val logoScale = remember { Animatable(0.5f) }
+        val logoAlpha = remember { Animatable(0f) }
+        LaunchedEffect(Unit) {
+            coroutineScope {
+                launch { logoAlpha.animateTo(1f, tween(300, delayMillis = 60)) }
+            }
+            logoScale.animateTo(0.95f, tween(440, easing = LinearOutSlowInEasing))
+            logoScale.animateTo(1f, tween(700, easing = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)))
+        }
+        Box(
+            modifier = Modifier
+                .size(90.dp)
+                .graphicsLayer {
+                    scaleX = logoScale.value
+                    scaleY = logoScale.value
+                    alpha = logoAlpha.value
+                }
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color(0xFFE0342F)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("MJ", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(Modifier.weight(0.05f))
+
+        // 文字标: translationY 100dp→0 弹性(~1.7s), alpha 延迟 300ms/1400ms
+        val textY = remember { Animatable(100f) }
+        val textAlpha = remember { Animatable(0f) }
+        LaunchedEffect(Unit) {
+            coroutineScope {
+                launch { textAlpha.animateTo(1f, tween(1400, delayMillis = 300)) }
+            }
+            textY.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = 62f))
+        }
+        Text(
+            text = "MJ 彩蛋",
+            color = Color.White,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.graphicsLayer {
+                translationY = textY.value * density.density
+                alpha = textAlpha.value
+            },
+        )
+
+        Spacer(Modifier.weight(0.14f))
+
+        // 白色大圆箭头按钮(全屏唯一可点物)
+        Box(
+            modifier = Modifier.weight(0.2f),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(84.dp)
+                    .graphicsLayer {
+                        scaleX = btnScale.value
+                        scaleY = btnScale.value
+                        alpha = btnAlpha.value
+                    }
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .onGloballyPositioned { onButtonBounds(it.boundsInRoot()) }
+                    .clickable(onClick = onExpand),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Forward,
+                    contentDescription = "开始",
+                    tint = Color(0xFF5A6470),
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+        }
+
+        Spacer(Modifier.weight(0.2f))
+    }
+}
+
+@Composable
+private fun PermissionStep(onOpenSettings: () -> Unit, onNext: () -> Unit) {
+    val context = LocalContext.current
     val a11y by produceState(initialValue = false to false) {
         while (true) {
             value = MjAccessibilityService.isConnected() to
@@ -92,203 +280,159 @@ fun OobeScreen(onDone: () -> Unit) {
         }
     }
     val (connected, enabledInSettings) = a11y
-
-    Scaffold { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(Modifier.height(64.dp))
-
-            // 仿桌面图标: 红底白字 MJ(自适应图标 XML 不支持 painterResource, 自绘最稳)
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .graphicsLayer {
-                        alpha = logoAlpha.value
-                        translationY = logoOffsetY.value.toPx()
-                    }
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(Color(0xFFE0342F)),
-                contentAlignment = Alignment.Center,
-            ) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 28.dp)) {
+        Spacer(Modifier.height(72.dp))
+        Text("开启无障碍服务", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "彩蛋靠无障碍服务只读监听聊天输入框的文本变化。\n全程只读，不会替你打字或发消息。",
+            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+            fontSize = 15.sp,
+            lineHeight = 22.sp,
+        )
+        Spacer(Modifier.height(28.dp))
+        Card(Modifier.fillMaxWidth()) {
+            Box(Modifier.padding(16.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "MJ",
-                    color = Color.White,
-                    fontSize = 34.sp,
+                    text = when {
+                        connected -> "✓ 已连接（正在收事件）"
+                        enabledInSettings -> "系统已勾选，但服务未连接 —— 请关闭后重新打开一次"
+                        else -> "尚未开启"
+                    },
+                    color = if (connected) MiuixTheme.colorScheme.primary
+                    else MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     fontWeight = FontWeight.Bold,
                 )
             }
-            Spacer(Modifier.height(20.dp))
-
-            AnimatedContent(
-                targetState = step,
-                transitionSpec = {
-                    if (targetState > initialState) {
-                        (slideInHorizontally { it / 3 } + fadeIn())
-                            .togetherWith(slideOutHorizontally { -it / 4 } + fadeOut())
-                    } else {
-                        (slideInHorizontally { -it / 3 } + fadeIn())
-                            .togetherWith(slideOutHorizontally { it / 4 } + fadeOut())
-                    }
-                },
-                label = "step",
-                modifier = Modifier.weight(1f),
-            ) { current ->
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    when (current) {
-                        0 -> WelcomeStep()
-                        1 -> AccessibilityStep(
-                            connected = connected,
-                            enabledInSettings = enabledInSettings,
-                            openA11ySettings = {
-                                MjAccessibilityService.openAccessibilitySettings(context)
-                            },
-                        )
-                        else -> DoneStep()
-                    }
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer { scaleX = buttonScale.value; scaleY = buttonScale.value },
-            ) {
-                Button(
-                    onClick = {
-                        when (step) {
-                            0 -> step = 1
-                            1 -> if (step == 1) step = 2
-                            else -> onDone()
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                ) {
-                    Text(
-                        text = when (step) {
-                            0 -> "开始"
-                            1 -> "下一步"
-                            else -> "开始使用"
-                        },
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-            Spacer(Modifier.height(40.dp))
         }
+        if (!connected) {
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+                Text("去系统设置开启")
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Button(onClick = onNext, modifier = Modifier.fillMaxWidth()) {
+            Text("下一步", fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(40.dp))
     }
 }
 
 @Composable
-private fun WelcomeStep() {
-    Spacer(Modifier.height(8.dp))
-    Text(
-        text = "MJ 彩蛋",
-        fontSize = MiuixTheme.textStyles.title1.fontSize,
-        fontWeight = FontWeight.Bold,
-    )
-    Spacer(Modifier.height(10.dp))
-    Text(
-        text = "在聊天里自己发送 mj，全屏播放一段\n蜘蛛侠动画，播完自动消失。",
-        textAlign = TextAlign.Center,
-        color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-        fontSize = MiuixTheme.textStyles.body2.fontSize,
-    )
-    Spacer(Modifier.height(28.dp))
-    Card(modifier = Modifier.fillMaxWidth()) {
-        OobePoint("只读检测", "不注入按键、不模拟点击、不自动发消息")
-        OobePoint("四端支持", "微信 / QQ / 钉钉 / 抖音 的聊天输入框")
-        OobePoint("即发即播", "无论回车、点发送还是用输入法发送键")
-    }
-}
-
-@Composable
-private fun AccessibilityStep(
-    connected: Boolean,
-    enabledInSettings: Boolean,
-    openA11ySettings: () -> Unit,
-) {
-    Spacer(Modifier.height(8.dp))
-    Text(
-        text = "开启无障碍服务",
-        fontSize = MiuixTheme.textStyles.title1.fontSize,
-        fontWeight = FontWeight.Bold,
-    )
-    Spacer(Modifier.height(10.dp))
-    Text(
-        text = "彩蛋靠无障碍服务只读监听聊天输入框的文本变化。\n全程只读，不会替你打字或发消息。",
-        textAlign = TextAlign.Center,
-        color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-        fontSize = MiuixTheme.textStyles.body2.fontSize,
-    )
-    Spacer(Modifier.height(28.dp))
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Box(modifier = Modifier.padding(16.dp), contentAlignment = Alignment.Center) {
-            Text(
-                text = when {
-                    connected -> "✓ 已连接（正在收事件）"
-                    enabledInSettings -> "系统已勾选，但服务未连接 —— 请关闭后重新打开一次"
-                    else -> "尚未开启"
-                },
-                color = if (connected) MiuixTheme.colorScheme.primary
-                else MiuixTheme.colorScheme.onSurfaceContainerVariant,
-                fontWeight = FontWeight.Bold,
+private fun BasicStep(settings: SettingsStore, onNext: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 28.dp)) {
+        Spacer(Modifier.height(72.dp))
+        Text("基础设置", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "选择要监控的聊天应用，随时可以在「功能」页改。",
+            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+            fontSize = 15.sp,
+        )
+        Spacer(Modifier.height(28.dp))
+        Card(Modifier.fillMaxWidth()) {
+            SwitchPreference(
+                title = "微信",
+                summary = "com.tencent.mm",
+                checked = settings.targetWeChat,
+                onCheckedChange = settings::updateTargetWeChat,
+            )
+            SwitchPreference(
+                title = "QQ",
+                summary = "com.tencent.mobileqq",
+                checked = settings.targetQQ,
+                onCheckedChange = settings::updateTargetQQ,
+            )
+            SwitchPreference(
+                title = "钉钉",
+                summary = "com.alibaba.android.rimet",
+                checked = settings.targetDingTalk,
+                onCheckedChange = settings::updateTargetDingTalk,
+            )
+            SwitchPreference(
+                title = "抖音",
+                summary = "com.ss.android.ugc.aweme",
+                checked = settings.targetDouyin,
+                onCheckedChange = settings::updateTargetDouyin,
             )
         }
-    }
-    Spacer(Modifier.height(16.dp))
-    if (!connected) {
-        Button(
-            onClick = openA11ySettings,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("去系统设置开启")
+        Spacer(Modifier.weight(1f))
+        Button(onClick = onNext, modifier = Modifier.fillMaxWidth()) {
+            Text("下一步", fontWeight = FontWeight.Bold)
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(40.dp))
+    }
+}
+
+@Composable
+private fun DoneGlowStep(onDone: () -> Unit) {
+    GlowBackground(Modifier.fillMaxSize())
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(120.dp))
+        Text("一切就绪！", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(14.dp))
         Text(
-            text = "开启后回到本页，状态会自动变绿；也可以先跳过，稍后在主页开启。",
+            text = "去微信 / QQ / 钉钉 / 抖音的聊天输入框里\n输入 mj 并发送，蜘蛛侠马上登场。",
+            color = Color.White.copy(alpha = 0.85f),
+            fontSize = 15.sp,
+            lineHeight = 22.sp,
             textAlign = TextAlign.Center,
-            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
         )
+        Spacer(Modifier.weight(1f))
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text("开始使用", fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(40.dp))
     }
 }
 
+/**
+ * AGSL 彩色流动辉光背景（参照 HyperCeiler GlowPainter）:
+ * 三团光晕（MJ 红 / 蓝 / 紫）随时间缓慢漂移, 深色底。
+ */
 @Composable
-private fun DoneStep() {
-    Spacer(Modifier.height(8.dp))
-    Text(
-        text = "一切就绪！",
-        fontSize = MiuixTheme.textStyles.title1.fontSize,
-        fontWeight = FontWeight.Bold,
-    )
-    Spacer(Modifier.height(10.dp))
-    Text(
-        text = "去微信 / QQ / 钉钉 / 抖音的聊天输入框里\n输入 mj 并发送，蜘蛛侠马上登场。",
-        textAlign = TextAlign.Center,
-        color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-        fontSize = MiuixTheme.textStyles.body2.fontSize,
-    )
-}
+private fun GlowBackground(modifier: Modifier) {
+    val shader = remember {
+        RuntimeShader(
+            """
+            uniform float2 resolution;
+            uniform float time;
 
-@Composable
-private fun OobePoint(title: String, summary: String) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text(text = title, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = summary,
-            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-            fontSize = MiuixTheme.textStyles.body2.fontSize,
+            half4 main(float2 fragCoord) {
+                float2 uv = fragCoord / resolution.y;
+                float t = time;
+                float2 c1 = float2(0.5 + 0.28 * sin(t * 0.35), 0.32 + 0.10 * sin(t * 0.53 + 1.0));
+                float2 c2 = float2(0.18 + 0.20 * sin(t * 0.29 + 2.0), 0.78 + 0.12 * cos(t * 0.43));
+                float2 c3 = float2(0.86 + 0.16 * cos(t * 0.31 + 4.0), 0.72 + 0.10 * sin(t * 0.47 + 3.0));
+                float g1 = exp(-pow(distance(uv, c1) * 2.9, 2.0));
+                float g2 = exp(-pow(distance(uv, c2) * 3.4, 2.0));
+                float g3 = exp(-pow(distance(uv, c3) * 3.2, 2.0));
+                float3 col = float3(0.016, 0.016, 0.024);
+                col += float3(0.60, 0.13, 0.11) * g1;
+                col += float3(0.10, 0.24, 0.58) * g2;
+                col += float3(0.32, 0.11, 0.48) * g3;
+                return half4(col, 1.0);
+            }
+            """.trimIndent()
         )
     }
+    val time = remember { Animatable(0f) }
+    LaunchedEffect(shader) {
+        val start = System.nanoTime()
+        while (true) {
+            val now = withFrameNanos { it }
+            time.snapTo((now - start) / 1_000_000_000f)
+        }
+    }
+    Box(
+        modifier = modifier.drawBehind {
+            shader.setFloatUniform("resolution", size.width, size.height)
+            shader.setFloatUniform("time", time.value)
+            drawRect(ShaderBrush(shader))
+        }
+    )
 }

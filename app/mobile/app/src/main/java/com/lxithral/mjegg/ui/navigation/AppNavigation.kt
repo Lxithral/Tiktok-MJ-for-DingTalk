@@ -54,7 +54,7 @@ fun AppNavigation(settings: com.lxithral.mjegg.platform.SettingsStore) {
             ),
         ) {
             entry<Route.Oobe> {
-                OobeScreen(onDone = {
+                OobeScreen(settings = settings, onDone = {
                     settings.oobeDone = true
                     if (navigator.backStackSize() > 1 && navigator.backStack.contains(Route.Main)) {
                         // 从开发者模式重新进入的: 弹回首屏(保留设置页等路径)
