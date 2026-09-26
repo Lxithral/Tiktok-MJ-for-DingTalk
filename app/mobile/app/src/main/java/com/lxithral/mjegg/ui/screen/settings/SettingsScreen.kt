@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.lxithral.mjegg.platform.SettingsStore
+import com.lxithral.mjegg.ui.component.KeepAliveRows
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -50,6 +51,11 @@ fun SettingsScreen(
                     onClick = onOpenTheme,
                 )
             }
+        }
+
+        item {
+            SmallTitle("保后台")
+            KeepAliveRows()
         }
 
         if (settings.devUnlocked) {

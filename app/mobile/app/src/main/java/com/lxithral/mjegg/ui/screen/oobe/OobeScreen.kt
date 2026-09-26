@@ -73,6 +73,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lxithral.mjegg.egg.MjAccessibilityService
 import com.lxithral.mjegg.platform.SettingsStore
+import com.lxithral.mjegg.ui.component.KeepAliveRows
+import com.lxithral.mjegg.ui.component.LockIcon
+import com.lxithral.mjegg.ui.component.PermissionRow
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -241,10 +244,15 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
                         onNext = { step = 2 },
                     )
 
-                    2 -> BasicStep(
-                        settings = settings,
+                    2 -> KeepAliveStep(
                         onBack = { if (step > 0) step -= 1 },
                         onNext = { step = 3 },
+                    )
+
+                    3 -> BasicStep(
+                        settings = settings,
+                        onBack = { if (step > 0) step -= 1 },
+                        onNext = { step = 4 },
                     )
 
                     else -> DoneStep(glowActive = glowActive, blurGlass = blurGlass, onDone = onDone)
@@ -467,28 +475,6 @@ private fun ArrowIcon() {
     }
 }
 
-/** provision_picker_btn_radio 64×64 蓝色对勾, 落位 24dp。 */
-@Composable
-private fun CheckIcon() {
-    Canvas(Modifier.size(24.dp)) {
-        val s = size.width / 64f
-        val path = Path().apply {
-            moveTo(50.8171f * s, 22.1514f * s)
-            cubicTo(52.0496f * s, 20.6624f * s, 51.8417f * s, 18.4561f * s, 50.3527f * s, 17.2235f * s)
-            cubicTo(48.8636f * s, 15.991f * s, 46.6573f * s, 16.1989f * s, 45.4247f * s, 17.6879f * s)
-            lineTo(26.9535f * s, 40.0031f * s)
-            lineTo(17.4007f * s, 30.4502f * s)
-            cubicTo(16.0338f * s, 29.0833f * s, 13.8177f * s, 29.0833f * s, 12.4509f * s, 30.4502f * s)
-            cubicTo(11.0841f * s, 31.817f * s, 11.0841f * s, 34.0331f * s, 12.4509f * s, 35.3999f * s)
-            lineTo(24.7077f * s, 47.6567f * s)
-            cubicTo(25.7244f * s, 48.6734f * s, 27.2109f * s, 48.9338f * s, 28.4683f * s, 48.4381f * s)
-            cubicTo(29.016f * s, 48.2302f * s, 29.519f * s, 47.8817f * s, 29.9192f * s, 47.3982f * s)
-            close()
-        }
-        drawPath(path, CHECK_BLUE)
-    }
-}
-
 /** 返回箭头 = ?android:homeAsUpIndicator: 「←」横杆箭头, 40dp。 */
 @Composable
 private fun BackIcon() {
@@ -681,37 +667,6 @@ private fun ProvisionButton(
     }
 }
 
-/** 权限行 —— PermissionItemView: 56dp, 圆角列表底, 左标题, 右蓝 check(未勾=占位不显示)。 */
-@Composable
-private fun PermissionRow(
-    title: String,
-    checked: Boolean,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .height(56.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MiuixTheme.colorScheme.surfaceContainer)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-    ) {
-        Text(
-            text = title,
-            color = MiuixTheme.colorScheme.onSurface,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.align(Alignment.CenterStart),
-        )
-        Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-            if (checked) CheckIcon()
-            else Spacer(Modifier.size(24.dp))
-        }
-    }
-}
-
 /**
  * 权限设置页 —— PermissionSettingsActivity/Fragment:
  * 单门控范式: 无障碍服务未连通时「继续」禁用 + alpha 0.5(setAllowNext), 通后自动亮起。
@@ -755,6 +710,24 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
                     .padding(top = 16.dp, bottom = 8.dp),
             )
         }
+    }
+}
+
+/**
+ * 保活设置页 —— 解决"息屏/后台久了收不到 mj"与"重装后事件被冻住"两类运行时问题。
+ * 三行(自启动/忽略电池优化/锁定后台)均可点按跳转系统页, 状态 ON_RESUME 刷新;
+ * 不门控流程(完成度无法可靠探测)。
+ */
+@Composable
+private fun KeepAliveStep(onBack: () -> Unit, onNext: () -> Unit) {
+    GuidePage(
+        title = "保活设置",
+        subtitle = "彩蛋要在后台收事件。请允许自启动、关闭省电限制，并在最近任务里锁定本应用；否则息屏久了会收不到 mj。",
+        icon = { LockIcon() },
+        onBack = onBack,
+        onNext = onNext,
+    ) {
+        KeepAliveRows()
     }
 }
 
