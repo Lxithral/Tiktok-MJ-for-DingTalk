@@ -31,8 +31,8 @@ android {
         // miuix-blur 0.9.3 自身声明 minSdk 33; 玻璃模糊本来也需要 API 33 的 RuntimeShader
         minSdk = 33
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.0.8"
+        versionCode = 10
+        versionName = "1.0.9"
     }
 
     signingConfigs {

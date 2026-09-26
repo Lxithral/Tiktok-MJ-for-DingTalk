@@ -185,7 +185,9 @@ class MjAccessibilityService : AccessibilityService() {
     private fun onTextChanged(e: AccessibilityEvent, pkg: String) {
         val src = safeSource(e)
         val srcEditable = src != null && isEditableNode(src)
-        val fromSource = if (srcEditable) src?.text?.toString() else null
+        // effectiveText: 钉钉输入框为空时 text 属性返回占位 hint, 必须归一成空串,
+        // 否则 fromSource 会以"记录一下"这种占位语抢在 hint 判定之前把候选撤销掉
+        val fromSource = if (srcEditable) src?.let { effectiveText(it) } else null
         // 空列表 = 客户端没填, 不能当空串; 非空列表才可用。
         // filterNotNull: 列表里理论上可能出现 null 元素, 不过滤的话 joinToString 会
         // 拼出字面量 "null", 把文本污染成 "nullmj" 之类。
@@ -251,7 +253,7 @@ class MjAccessibilityService : AccessibilityService() {
         val focus = focusedInputNode() ?: return
         var node = focus
         var cls = node.className?.toString()
-        var raw = node.text?.toString()
+        var raw = effectiveText(node)
         // 微信实测: findFocus(FOCUS_INPUT) 返回的是 ChattingUILayout 这种**容器**,
         // 它自己没有 className/text; 真正的输入框在它的子树里。所以要往下找一层。
         if (raw == null) {
@@ -259,7 +261,7 @@ class MjAccessibilityService : AccessibilityService() {
             if (inner != null) {
                 node = inner
                 cls = inner.className?.toString()
-                raw = inner.text?.toString()
+                raw = effectiveText(inner)
             }
         }
         val nodePkg = try {
@@ -313,6 +315,31 @@ class MjAccessibilityService : AccessibilityService() {
     } catch (t: Throwable) {
         Log.d(TAG, "读取焦点输入框失败: ${t.message}")
         null
+    }
+
+    /**
+     * 节点的"有效文本"。
+     *
+     * **钉钉实测(2026-09-26 真机抓包)**: 输入框为空时, 节点的 text 属性返回的是
+     * **占位 hint**(自述聊天框是"记录一下"), 永远不为空 —— 不加处理的话,
+     * 轮询和事件读取都会把 hint 当用户输入喂给状态机, 撤销刚登记的触发词候选,
+     * 发送确认永远出不来(症状: 诊断页"命中 N 次, 确认 0 次")。
+     *
+     * 规则: text == hintText => 输入框显示的是占位符 => 返回**空串**(视为已清空)。
+     * 用户真输入了与 hint 相同的内容时, 逐字符打字过程早把候选撤销了, 无副作用。
+     */
+    private fun effectiveText(node: AccessibilityNodeInfo): String? {
+        val t = try {
+            node.text?.toString()
+        } catch (t: Throwable) {
+            null
+        } ?: return null
+        val h = try {
+            node.hintText?.toString()
+        } catch (t: Throwable) {
+            null
+        }
+        return if (h != null && t == h) "" else t
     }
 
     private fun safeSource(e: AccessibilityEvent): AccessibilityNodeInfo? = try {
