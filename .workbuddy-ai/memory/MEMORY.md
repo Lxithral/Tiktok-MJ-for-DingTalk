@@ -102,9 +102,11 @@ rm -f /tmp/gh_b64.txt
 直接调 `git-credential-manager.exe get` 能正常返回缓存凭据。
 
 其他网络事实：
-- 直连 github.com **不通**，必须走代理；全局 gitconfig 里 `http.proxy=http://127.0.0.1:7890`（Clash）
+- **2026-09-26 更新：直连 github.com 已可用**（`-c http.proxy=` 清掉代理直推成功）；
+  优先直连，失败再走 7890 代理。老结论"直连不通"已过时
+- 代理路径：全局 gitconfig 里 `http.proxy=http://127.0.0.1:7890`（FlClash，开机不常驻，
+  掉线时表现为 connection reset / 无法连接代理端口，抖动重试或直连）
 - 环境变量里的 `http_proxy=127.0.0.1:56730` 对 github **不通**，别用
-- 7890 正常时 0.9s 能拿到 `info/refs`，偶尔会抖动到 16s（重试即可）
 
 ## 产物命名与位置
 
