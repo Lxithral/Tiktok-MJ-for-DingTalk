@@ -39,3 +39,4 @@ keystore.properties
 *.iml
 .DS_Store
 Thumbs.db
+.zcode/
