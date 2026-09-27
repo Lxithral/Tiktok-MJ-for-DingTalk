@@ -119,7 +119,7 @@ private const val DEBOUNCE_MS = 2000L           // StartupFragment 点击防抖
 private const val DISPLAY_OS_ANDO_MS = 2500L    // displayOsAndoDelay 兜底
 private const val BUTTON_IN_DELAY_MS = 1340L    // startPageBtnAnim setDelay(1340)
 private const val BUTTON_IN_DUR_MS = 450        // FolmeEase.cubicOut(450)
-private const val BUTTON_ENABLE_DELAY_MS = 1000L // delayEnableButton
+private const val BUTTON_ENABLE_DELAY_MS = 2500L // delayEnableButton: 每页停留一小会再放行「继续」
 private const val MORPH_MS = 505                // makeScaleUpAnim 转场(照抄 505ms 恢复窗口)
 private const val PAGE_SLIDE_MS = 500           // 页间翻页(放慢 + 视差淡出)
 
@@ -164,76 +164,21 @@ fun OobeScreen(settings: SettingsStore, showNotes: Boolean, onDone: () -> Unit) 
     var firstEntry by remember { mutableStateOf(true) }
     var buttonBounds by remember { mutableStateOf<Rect?>(null) }
 
-    // —— makeScaleUpAnim 转场: morphDir 0=无 1=前进(卡片放大) 2=返回(卡片缩回) ——
-    // 内容插入门闩 = morphDir != 0(backFromPermission 里与 step=0 **同帧**置位,
-    // movable 内容随门闩在浮层/页面槽之间搬迁, 不出现"同帧双缺席"丢状态);
-    // 视觉门闩 = morphActive(必须等 snapTo 落位后再显示, 否则首帧会以全屏锚左上角闪现)。
-    var morphDir by remember { mutableIntStateOf(0) }
-    var morphActive by remember { mutableStateOf(false) }
-    // 分属性错落曲线(Folme 手感): 几何=505ms 窗口, 圆角=慢 spring 晚收尾, 内容=早到位
-    val geoP = remember { Animatable(0f) }
-    val cornerP = remember { Animatable(0f) }
-    val contentAlpha = remember { Animatable(0f) }
-
-    fun backFromPermission() {
-        firstEntry = false
-        step = 0          // 与 morphDir=2 同帧: 内容立即由浮层接管, 状态不丢
-        morphDir = 2
-    }
-
-    // pages[1] 内容单实例: 转场浮层与 AnimatedContent 页槽共用(movableContentOf 搬迁),
-    // 无障碍轮询/按钮 1000ms 门等状态全程只有一份, 交接不重建
-    val pageOneContent = remember {
-        movableContentOf {
-            when (pages[1]) {
-                OobePage.Notes -> NotesStep(
-                    onBack = { backFromPermission() },
-                    onNext = { if (!morphActive && morphDir == 0) step += 1 },
-                )
-                else -> PermissionStep(
-                    onBack = { backFromPermission() },
-                    onNext = { if (!morphActive && morphDir == 0) step += 1 },
-                )
-            }
+    // 页间就是普通滑动切换(用户决定不做按钮展开转场); 每页的停留节奏由
+    // GuidePage 的 BUTTON_ENABLE_DELAY_MS 控制, 防止狂点「继续」快速跳完
+    fun goNext() {
+        val now = System.currentTimeMillis()
+        if (now - lastTapAt > DEBOUNCE_MS) {
+            lastTapAt = now
+            firstEntry = false
+            step += 1
         }
     }
 
-    // transitToPrevious: OOBE 内返回=回上一步; 权限页返回=缩回按钮(转场层驱动)
+    // transitToPrevious: OOBE 内返回=回上一步; 回到首屏后不再放圆环
     BackHandler(enabled = step > 0) {
-        if (step == 1) backFromPermission() else step -= 1
-    }
-
-    LaunchedEffect(morphDir) {
-        when (morphDir) {
-            1 -> {
-                geoP.snapTo(0f)
-                cornerP.snapTo(0f)
-                contentAlpha.snapTo(0f)
-                morphActive = true
-                coroutineScope {
-                    launch { geoP.animateTo(1f, tween(MORPH_MS, easing = SMOOTH)) }
-                    // 圆角慢收尾(晚于几何到位); 临界阻尼防过冲(过冲会让 1-p 变负炸圆角)
-                    launch { cornerP.animateTo(1f, spring(dampingRatio = 1f, stiffness = 120f)) }
-                    launch { contentAlpha.animateTo(1f, tween(320, easing = CUBIC_OUT)) }
-                }
-                step = 1
-                morphActive = false
-                morphDir = 0
-            }
-            2 -> {
-                geoP.snapTo(1f)
-                cornerP.snapTo(1f)
-                contentAlpha.snapTo(1f)
-                morphActive = true
-                coroutineScope {
-                    launch { geoP.animateTo(0f, tween(MORPH_MS, easing = SMOOTH)) }
-                    launch { cornerP.animateTo(0f, spring(dampingRatio = 1f, stiffness = 120f)) }
-                    launch { contentAlpha.animateTo(0f, tween(260, easing = CUBIC_OUT)) }
-                }
-                morphActive = false
-                morphDir = 0
-            }
-        }
+        if (step == 1) firstEntry = false
+        step -= 1
     }
 
     BoxWithConstraints(
@@ -241,147 +186,40 @@ fun OobeScreen(settings: SettingsStore, showNotes: Boolean, onDone: () -> Unit) 
             .fillMaxSize()
             .background(MiuixTheme.colorScheme.surface)
     ) {
-        val rootW = constraints.maxWidth.toFloat()
         val rootH = constraints.maxHeight.toFloat()
-        val rootWdp = with(density) { rootW.toDp() }
-        val rootHdp = with(density) { rootH.toDp() }
 
-        // 旧页处理: 模糊开=背景模糊随转场进度渐入(0→20dp, 用户描述"同时背景模糊"),
-        // 非模糊=前景遮罩 #99000000 压暗(照抄 getAnimForeGroundColor, 遮罩画在转场层里)
-        Box(
-            Modifier
-                .fillMaxSize()
-                .then(if (morphActive && blurGlass) Modifier.blur(20.dp * geoP.value) else Modifier)
-        ) {
-            // —— 页间翻页: 500ms 平滑滑动 + 旧页 30% 视差淡出(用户反馈 350ms 太快不优雅) ——
-            // 0↔1 由卡片缩放转场驱动, 这里平地替换(被转场层遮住)
-            AnimatedContent(
-                targetState = step,
-                transitionSpec = {
-                    when {
-                        initialState == 0 && targetState == 1 ->
-                            EnterTransition.None togetherWith ExitTransition.None
-                        initialState == 1 && targetState == 0 ->
-                            EnterTransition.None togetherWith ExitTransition.None
-                        targetState > initialState ->
-                            slideInHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { it } togetherWith
-                                (slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { -(it * 0.3f).roundToInt() } +
-                                    fadeOut(tween(PAGE_SLIDE_MS)))
-                        else ->
-                            slideInHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { -it } togetherWith
-                                (slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { (it * 0.3f).roundToInt() } +
-                                    fadeOut(tween(PAGE_SLIDE_MS)))
-                    }
-                },
-                label = "oobe",
-            ) { target ->
-                when (pages[target]) {
-                    OobePage.Splash -> SplashStep(
-                        glowActive = glowActive,
-                        blurGlass = blurGlass,
-                        rootHeightPx = rootH,
-                        admission = firstEntry,
-                        entryAnim = firstEntry,
-                        onButtonBounds = { buttonBounds = it },
-                        buttonHidden = morphDir == 1,
-                        onExpand = {
-                            val now = System.currentTimeMillis()
-                            if (morphDir == 0 && now - lastTapAt > DEBOUNCE_MS) {
-                                lastTapAt = now
-                                firstEntry = false
-                                morphDir = 1
-                            }
-                        },
-                    )
+        // 页间翻页: 500ms 平滑滑动 + 旧页 30% 视差淡出
+        AnimatedContent(
+            targetState = step,
+            transitionSpec = {
+                if (targetState > initialState)
+                    slideInHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { it } togetherWith
+                        (slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { -(it * 0.3f).roundToInt() } +
+                            fadeOut(tween(PAGE_SLIDE_MS)))
+                else
+                    slideInHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { -it } togetherWith
+                        (slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { (it * 0.3f).roundToInt() } +
+                            fadeOut(tween(PAGE_SLIDE_MS)))
+            },
+            label = "oobe",
+        ) { target ->
+            when (pages[target]) {
+                OobePage.Splash -> SplashStep(
+                    glowActive = glowActive,
+                    blurGlass = blurGlass,
+                    rootHeightPx = rootH,
+                    admission = firstEntry,
+                    entryAnim = firstEntry,
+                    onExpand = { goNext() },
+                )
 
-                    OobePage.Notes, OobePage.Permission -> pageOneContent()
-
-                    OobePage.KeepAlive -> KeepAliveStep(
-                        onBack = { if (step > 0) step -= 1 },
-                        onNext = { step += 1 },
-                    )
-
-                    OobePage.Basic -> BasicStep(
-                        settings = settings,
-                        onBack = { if (step > 0) step -= 1 },
-                        onNext = { step += 1 },
-                    )
-
-                    OobePage.Done -> DoneStep(glowActive = glowActive, blurGlass = blurGlass, onDone = onDone)
-                }
-            }
-        }
-
-        // —— 转场浮层(单卡片玻璃材质, 对齐分析结论) ——
-        // 一块卡片: 玻璃填充(半透明按钮色→页面底)随进度 morph, 内容随窗口比例缩放并按
-        // contentAlpha 淡入, 箭头按 1-contentAlpha 互补淡出(同一条曲线, 无叠影中间态);
-        // 背景同步模糊在上层(非模糊时此处画 #99000000 前景遮罩)。返回=反向缩回按钮。
-        // 内容门闩 = morphDir != 0(同帧接管 movable 内容); 视觉门闩 = morphActive(防闪现)。
-        val bounds = buttonBounds
-        if (morphDir != 0 && bounds != null) {
-            val g = geoP.value
-            val ca = contentAlpha.value
-            val surface = MiuixTheme.colorScheme.surface
-            val bw = bounds.width
-            val bh = bounds.height
-            val w = bw + (rootW - bw) * g
-            val h = bh + (rootH - bh) * g
-            val cx = bounds.center.x + (rootW / 2f - bounds.center.x) * g
-            val cy = bounds.center.y + (rootH / 2f - bounds.center.y) * g
-            val corner = with(density) {
-                // 钳位兜底: 任何过冲/边界情况都不允许出现负圆角(CornerBasedShape 会抛异常)
-                (bw / 2f * (1f - cornerP.value).coerceIn(0f, 1f)).toDp()
-            }
-            val dx = IntOffset((cx - w / 2f).roundToInt(), (cy - h / 2f).roundToInt())
-            val wDp = with(density) { w.toDp() }
-            val hDp = with(density) { h.toDp() }
-
-            if (!blurGlass) {
-                Box(Modifier.fillMaxSize().background(Color(FOREGROUND_FILL)))
-            }
-
-            Box(
-                modifier = Modifier
-                    .offset { dx }
-                    .size(wDp, hDp)
-                    .clip(RoundedCornerShape(corner))
-                    .graphicsLayer { alpha = if (morphActive) 1f else 0f }
-                    // 玻璃材质: 起手是半透明按钮玻璃色(透出模糊辉光), 随内容到位 morph 成页面底色
-                    .background(
-                        lerp(
-                            (if (blurGlass) BUTTON_INDIGO else BTN_LITE).copy(alpha = 0.85f),
-                            surface,
-                            ca,
-                        )
-                    ),
-            ) {
-                // 页面内容随窗口比例缩放, 按 contentAlpha 早到位
-                Box(
-                    Modifier
-                        .requiredSize(rootWdp, rootHdp)
-                        .graphicsLayer {
-                            scaleX = w / rootW
-                            scaleY = h / rootH
-                            transformOrigin = TransformOrigin(0f, 0f)
-                            alpha = ca
-                        }
-                ) {
-                    pageOneContent()
-                }
-                // 箭头随卡片等比放大, 与内容互补淡出
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            val k = w / bw
-                            scaleX = k
-                            scaleY = k
-                            alpha = 1f - ca
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ArrowIcon()
-                }
+                // 每页渲染自己的内容(必须按页分派 —— 曾因共享 movable 内容把
+                // 权限页渲染成了第二个「本次更新」)
+                OobePage.Notes -> NotesStep(onBack = { step -= 1 }, onNext = { goNext() })
+                OobePage.Permission -> PermissionStep(onBack = { step -= 1 }, onNext = { goNext() })
+                OobePage.KeepAlive -> KeepAliveStep(onBack = { step -= 1 }, onNext = { goNext() })
+                OobePage.Basic -> BasicStep(settings = settings, onBack = { step -= 1 }, onNext = { goNext() })
+                OobePage.Done -> DoneStep(glowActive = glowActive, blurGlass = blurGlass, onDone = onDone)
             }
         }
     }
@@ -401,8 +239,6 @@ private fun SplashStep(
     rootHeightPx: Float,
     admission: Boolean,
     entryAnim: Boolean,
-    onButtonBounds: (Rect) -> Unit,
-    buttonHidden: Boolean,
     onExpand: () -> Unit,
 ) {
     // 字标组中心相对屏幕高度 → uCircleYOffset(setCircleYOffsetWithView)
@@ -508,12 +344,11 @@ private fun SplashStep(
                         .graphicsLayer {
                             scaleX = btnScale.value
                             scaleY = btnScale.value
-                            alpha = if (buttonHidden) 0f else btnAlpha.value
+                            alpha = btnAlpha.value
                         }
                         .clip(CircleShape)
                         .background(if (blurGlass) BUTTON_INDIGO else BTN_LITE)
-                        .onGloballyPositioned { onButtonBounds(it.boundsInRoot()) }
-                        .clickable(enabled = buttonReady && !buttonHidden, onClick = onExpand),
+                        .clickable(enabled = buttonReady, onClick = onExpand),
                     contentAlignment = Alignment.Center,
                 ) {
                     ArrowIcon()
@@ -525,17 +360,14 @@ private fun SplashStep(
     }
 }
 
-/** MJ logo: 红底圆角方块 + 白色「MJ」（原版样式, 用户选定）。 */
+/** MJ logo: 直接用桌面启动图标原图(ic_launcher_foreground), 保证与桌面图标完全一致。 */
 @Composable
 private fun MjLogoIcon(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(MJ_LOGO_RED),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("MJ", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-    }
+    Image(
+        painter = painterResource(R.drawable.ic_launcher_foreground),
+        contentDescription = null,
+        modifier = modifier.clip(RoundedCornerShape(22.dp)),
+    )
 }
 
 /** provision_icon_arrow 31×22 viewport 路径逐点照抄, 落位 29×20dp。 */
