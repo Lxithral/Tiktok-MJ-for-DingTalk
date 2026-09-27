@@ -87,7 +87,10 @@ class SettingsStore private constructor(context: Context) {
             prefs.edit().putString(K_COLOR_SPEC, v.name).apply()
         }
 
-    private var enableBlurState by mutableStateOf(prefs.getBoolean(K_ENABLE_BLUR, true))
+    // 默认仅 Android 13+(RuntimeShader 可用)开启, 更低版本默认关(降级路径)
+    private var enableBlurState by mutableStateOf(
+        prefs.getBoolean(K_ENABLE_BLUR, android.os.Build.VERSION.SDK_INT >= 33)
+    )
 
     /** 玻璃/毛玻璃总开关。API < 33 时玻璃会自动降级为不透明。 */
     var enableBlur: Boolean

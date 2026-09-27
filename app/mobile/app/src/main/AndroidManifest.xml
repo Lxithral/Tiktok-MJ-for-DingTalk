@@ -2,6 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- 兼容 Android 11(minSdk 30): miuix-blur 自带 minSdk 33 声明,
+         压掉合并限制 —— 其内部已由 isRuntimeShaderSupported()(SDK>=33) 门控,
+         低版本不走模糊路径(仿 miuix example 的降级思路) -->
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
+
     <!-- 保活: 弹系统对话框把本应用加入电池优化白名单(≈ MIUI 省电策略=无限制) -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 

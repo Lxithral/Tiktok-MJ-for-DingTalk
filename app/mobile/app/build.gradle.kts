@@ -28,11 +28,12 @@ android {
 
     defaultConfig {
         applicationId = "com.lxithral.mjegg"
-        // miuix-blur 0.9.3 自身声明 minSdk 33; 玻璃模糊本来也需要 API 33 的 RuntimeShader
-        minSdk = 33
+        // Android 11(1.0.26 起): RuntimeShader/玻璃模糊由 isRuntimeShaderSupported() 降级,
+        // miuix-blur 的 minSdk 33 声明在清单里 overrideLibrary 压掉
+        minSdk = 30
         targetSdk = 36
-        versionCode = 26
-        versionName = "1.0.25"
+        versionCode = 27
+        versionName = "1.0.26"
     }
 
     signingConfigs {

@@ -42,7 +42,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.movableContentOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -115,7 +114,6 @@ private val SIN_OUT = CubicBezierEasing(0.39f, 0.575f, 0.565f, 1f)       // sinO
 private val QUART_OUT = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)           // quartOut
 private val SINE_IN_OUT = CubicBezierEasing(0.37f, 0f, 0.63f, 1f)        // sine_in_out(pathInterpolator)
 
-private const val DEBOUNCE_MS = 2000L           // StartupFragment 点击防抖
 private const val DISPLAY_OS_ANDO_MS = 2500L    // displayOsAndoDelay 兜底
 private const val BUTTON_IN_DELAY_MS = 1340L    // startPageBtnAnim setDelay(1340)
 private const val BUTTON_IN_DUR_MS = 450        // FolmeEase.cubicOut(450)
@@ -159,7 +157,6 @@ fun OobeScreen(settings: SettingsStore, showNotes: Boolean, onDone: () -> Unit) 
         }
     }
     var step by remember { mutableIntStateOf(0) }
-    var lastTapAt by remember { mutableLongStateOf(0L) }
     // needAdmission 语义: 只有真正首入首屏放圆环; 点按钮前进或返回回首屏均不再放圈
     var firstEntry by remember { mutableStateOf(true) }
     var buttonBounds by remember { mutableStateOf<Rect?>(null) }
@@ -167,12 +164,10 @@ fun OobeScreen(settings: SettingsStore, showNotes: Boolean, onDone: () -> Unit) 
     // 页间就是普通滑动切换(用户决定不做按钮展开转场); 每页的停留节奏由
     // GuidePage 的 BUTTON_ENABLE_DELAY_MS 控制, 防止狂点「继续」快速跳完
     fun goNext() {
-        val now = System.currentTimeMillis()
-        if (now - lastTapAt > DEBOUNCE_MS) {
-            lastTapAt = now
-            firstEntry = false
-            step += 1
-        }
+        // 不再做全局防抖 —— 按钮自身的 500ms 门控就是防连点;
+        // 叠加 2s 防抖会出现"按钮已亮起却吞点击好几秒"的假死
+        firstEntry = false
+        step += 1
     }
 
     // transitToPrevious: OOBE 内返回=回上一步; 回到首屏后不再放圆环

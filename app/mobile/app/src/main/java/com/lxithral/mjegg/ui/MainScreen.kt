@@ -1,7 +1,9 @@
 package com.lxithral.mjegg.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.pager.HorizontalPager
@@ -11,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.lxithral.mjegg.platform.BottomBarStyle
 import com.lxithral.mjegg.platform.SettingsStore
@@ -25,8 +28,10 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.ProgressiveBlur
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -52,6 +57,8 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
 
     val liquidGlassActive = settings.bottomBarStyle == BottomBarStyle.LIQUID_GLASS &&
             settings.enableBlur && isRuntimeShaderSupported()
+    // 顶栏 progressive 渐变模糊(上边缘最强、向下渐清): 同样走模糊总开关 + API33 门控
+    val topBarBlur = settings.enableBlur && isRuntimeShaderSupported()
 
     val backdrop = rememberLayerBackdrop {
         drawRect(surfaceColor)
@@ -67,19 +74,32 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = when (pagerState.currentPage) {
-                    0 -> "MJ 彩蛋"
-                    1 -> "功能"
-                    else -> "设置"
-                },
-                largeTitle = when (pagerState.currentPage) {
-                    0 -> "MJ 彩蛋"
-                    1 -> "功能"
-                    else -> "设置"
-                },
-                scrollBehavior = scrollBehavior,
-            )
+            // progressive 模糊: 背后内容从顶边强模糊向下渐清(仿系统顶栏), 无内容时采样到纯底色=无感
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (topBarBlur) Modifier.progressiveTextureBlur(
+                            backdrop = backdrop,
+                            shape = RectangleShape,
+                            gradient = ProgressiveBlur.Top,
+                        ) else Modifier
+                    )
+            ) {
+                TopAppBar(
+                    title = when (pagerState.currentPage) {
+                        0 -> "MJ 彩蛋"
+                        1 -> "功能"
+                        else -> "设置"
+                    },
+                    largeTitle = when (pagerState.currentPage) {
+                        0 -> "MJ 彩蛋"
+                        1 -> "功能"
+                        else -> "设置"
+                    },
+                    scrollBehavior = scrollBehavior,
+                )
+            }
         },
         bottomBar = {
             BottomBar(
@@ -129,7 +149,7 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
                     alpha = homeAlpha.value
                 }
                 .then(
-                    if (liquidGlassActive) Modifier.layerBackdrop(backdrop) else Modifier
+                    if (liquidGlassActive || topBarBlur) Modifier.layerBackdrop(backdrop) else Modifier
                 ),
             beyondViewportPageCount = 1,
         ) { page ->
