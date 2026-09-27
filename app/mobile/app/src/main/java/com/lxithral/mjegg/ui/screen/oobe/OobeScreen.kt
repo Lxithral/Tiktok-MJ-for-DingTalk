@@ -435,6 +435,7 @@ private fun GuidePage(
     onBack: () -> Unit,
     nextEnabled: Boolean = true,
     onNext: () -> Unit,
+    onSkip: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     // delayEnableButton: 进页后 1000ms 按钮置灰, 防转场途中连点
@@ -503,8 +504,26 @@ private fun GuidePage(
 
         Spacer(Modifier.weight(1f))
 
-        // 不可点=灰色禁用态, 可点=亮色 —— 外观与 clickable 严格同帧翻转,
-        // 绝不出现"看起来可用却点不动"的中间态
+        // 次级动作「暂不设置」(文本按钮, 紧挨主按钮上方), 与主按钮共用进页延时门控
+        if (onSkip != null) {
+            Box(
+                Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "暂不设置",
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .graphicsLayer { alpha = if (enableDelayDone) 1f else 0.5f }
+                        .clickable(enabled = enableDelayDone, onClick = onSkip)
+                        .padding(horizontal = 32.dp, vertical = 10.dp),
+                )
+            }
+        }
+
+        // 不可点=半透明蓝(置灰语义), 可点=全亮 —— 外观与 clickable 严格同帧翻转
         ProvisionButton(
             label = "继续",
             enabled = canNext,
@@ -538,14 +557,10 @@ private fun ProvisionButton(
                 .fillMaxWidth()
                 .height(50.dp)
                 .clip(RoundedCornerShape(16.dp))
-                // 禁用 = 中性灰(明确不可用); 可用 = 亮色 —— 外观即状态
-                .background(
-                    when {
-                        !enabled -> Color(0xFF5A5A5A)
-                        dark -> Color(0x99000000)
-                        else -> PROVISION_BLUE
-                    }
-                )
+                .background(if (dark) Color(0x99000000) else PROVISION_BLUE)
+                // 禁用 = 半透明蓝(HALF_ALPHA, 优雅的置灰); 可用 = 全亮
+                // 与 clickable 严格同帧翻转 —— 不可点绝不显示可用态
+                .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
                 .clickable(enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
@@ -577,11 +592,12 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
 
     GuidePage(
         title = "权限设置",
-        subtitle = "彩蛋靠无障碍服务只读监听聊天输入框的文本变化\n全程只读 不会替你打字或发消息",
+        subtitle = "开启无障碍后彩蛋才能收事件",
         icon = { PreviewImage(R.drawable.oobe_ic_permission) },
         onBack = onBack,
         nextEnabled = connected || enabledInSettings,
         onNext = onNext,
+        onSkip = onNext,   // 暂不设置: 跳过配置直接下一步
     ) {
         // miuix 标准行(Card + BasicComponent), 尾部 未开=右箭头(提示可点)/已开=对勾
         Card(
@@ -592,8 +608,7 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
             StatusRow(
                 title = "无障碍服务",
                 checked = connected || enabledInSettings,
-                summary = if (connected) "已连接 正在收事件\n您可以稍后在「设置」中更改"
-                else "点按该行前往系统设置开启\n开启后返回本页即可继续",
+                summary = if (connected) "已连接 正在收事件" else "点按跳转系统设置",
                 showArrowWhenOff = true,
                 onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
             )
@@ -608,9 +623,8 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
         ) {
             Column(Modifier.padding(16.dp)) {
                 listOf(
-                    "① 进入系统「无障碍」设置页",
-                    "② 在「已下载的应用」或「已安装的服务」里找到 MJ 彩蛋",
-                    "③ 打开开关 弹窗提示时选择允许",
+                    "在「已下载的应用」或「已安装的服务」里打开开关",
+                    "弹窗提示时选择允许",
                 ).forEach { line ->
                     Text(
                         text = line,
@@ -752,8 +766,6 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
     val outScale = remember { Animatable(1f) }
     val outAlpha = remember { Animatable(1f) }
     var leaving by remember { mutableStateOf(false) }
-    // startBtnAnim: postDelayed(2000) → setEnabled(true)
-    var btnReady by remember { mutableStateOf(!entryAnim) }
 
     LaunchedEffect(Unit) {
         if (!entryAnim) return@LaunchedEffect
@@ -765,7 +777,6 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
             launch {
                 delay(1000)                       // startBtnAnim setDelay(1000)
                 btnAlpha.animateTo(1f, tween(450, easing = SIN_OUT))
-                btnReady = true                   // 完全可见的同帧即可点(外观=可点严格同步)
             }
         }
     }
@@ -834,9 +845,10 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
                         scaleY = outScale.value
                     },
             ) {
+                // 按钮始终亮着(只受 leaving 约束) —— 淡入过程即可点, 无禁用跳变
                 ProvisionButton(
                     label = "开始使用",
-                    enabled = btnReady && !leaving,
+                    enabled = !leaving,
                     onClick = { leaving = true },
                     dark = true,
                 )

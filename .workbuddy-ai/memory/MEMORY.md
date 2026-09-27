@@ -25,14 +25,12 @@ ADB="D:/AAA_TOOLS/搞机工具箱10.1.0/adb.exe"
 连接端口若 mDNS 没广播，可以直接扫手机端口（实测落在 30000–50000）：
 多线程 connect 扫一遍，能连上的就是 adb 连接端口。
 
-**用 ADB 开无障碍服务**（省得手动点，也便于复现）：
-
-```bash
-"$ADB" shell settings put secure enabled_accessibility_services \
-  com.lxithral.mjegg/com.lxithral.mjegg.egg.MjAccessibilityService
-"$ADB" shell settings put secure accessibility_enabled 1
-"$ADB" shell dumpsys accessibility | grep -A2 "Bound services"   # 确认真的绑上了
-```
+**🚫 红线（2026-09-27 用户暴怒后立的，永久生效）**：**严禁用 ADB 改无障碍设置**——
+尤其 `settings put secure enabled_accessibility_services` 是**整表覆盖**，曾把用户其他
+应用的无障碍开关全部清掉（输入法/工具类服务被关），用户原话"以后不要乱动我的无障碍"。
+任何场景都不许再执行：不 put、不重绑、不碰 accessibility_enabled。装机只做 `install -r`；
+装完若服务被系统冻结导致"发 mj 不触发"，**告知用户手动重开无障碍或重启手机**，不代劳。
+（历史教训：曾用下面这条命令"帮忙重绑"，代价是清掉用户全部其他无障碍服务。）
 
 **微信触发链路的关键事实**（2026-09-25 真机抓包定位，详见 mobile README v1.0.7）：
 - 微信的窗口树对无障碍**完全不可见**（rootInActiveWindow 只有根节点，uiautomator dump 也是空树），

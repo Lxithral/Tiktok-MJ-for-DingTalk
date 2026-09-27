@@ -1,5 +1,7 @@
 package com.lxithral.mjegg.ui.screen.about
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.lxithral.mjegg.BuildConfig
 import com.lxithral.mjegg.platform.SettingsStore
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
@@ -86,6 +89,31 @@ fun AboutScreen(onBack: () -> Unit) {
                     modifier = Modifier.padding(16.dp),
                     color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     fontSize = MiuixTheme.textStyles.body2.fontSize,
+                )
+            }
+            SmallTitle("引用与致谢")
+            Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                ArrowPreference(
+                    title = "HyperCeiler",
+                    summary = "开源的 HyperOS 增强模块 引导动效与 OOBE 参考",
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ReChronoRain/HyperCeiler"))
+                            )
+                        }
+                    },
+                )
+                ArrowPreference(
+                    title = "miuix",
+                    summary = "Jetpack Compose 版 HyperOS 设计组件库",
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/compose-miuix-ui/miuix"))
+                            )
+                        }
+                    },
                 )
             }
             Spacer(Modifier.height(28.dp))

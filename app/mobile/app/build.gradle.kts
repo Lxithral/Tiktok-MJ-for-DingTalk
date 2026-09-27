@@ -32,8 +32,8 @@ android {
         // miuix-blur 的 minSdk 33 声明在清单里 overrideLibrary 压掉
         minSdk = 30
         targetSdk = 36
-        versionCode = 30
-        versionName = "1.0.29"
+        versionCode = 32
+        versionName = "1.0.31"
     }
 
     signingConfigs {

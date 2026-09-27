@@ -8,6 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import com.lxithral.mjegg.egg.MjAccessibilityService
 import com.lxithral.mjegg.platform.SettingsStore
 import com.lxithral.mjegg.ui.component.KeepAliveRows
 import top.yukonga.miuix.kmp.basic.Card
@@ -32,6 +34,7 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit,
     onRerunOobe: () -> Unit,
 ) {
+    val context = LocalContext.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -75,6 +78,17 @@ fun SettingsScreen(
                         onClick = onRerunOobe,
                     )
                 }
+            }
+        }
+
+        item {
+            SmallTitle("无障碍")
+            Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                ArrowPreference(
+                    title = "无障碍设置",
+                    summary = "检查或重新开启彩蛋的无障碍服务",
+                    onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
+                )
             }
         }
 
