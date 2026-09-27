@@ -817,7 +817,8 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
  * 辉光画布 —— GlowPainter uniform 全表 + GlowController tickPingPong + RenderViewLayout:
  * 0.2× 分辨率居中渲染 + scale 5× + 黑底(-16777216)、uTime 从 0 起 ping-pong 2↔120
  * (只翻向不夹取, 照抄 tickPingPong)、uCircleYOffset = 0.5 - 圆心比例(setCircleYOffsetWithView)。
- * admission=false → needAdmission(false) 仅流动背景。shader 不可用时退化静态渐变。
+ * admission=false → needAdmission(false) 仅流动背景。shader 不可用(Android 11 等)
+ * 时退化为**浅薰衣草静态渐变**(取自参考辉光色调) —— 字标/圆钮配色按浅底调, 兜底绝不能发黑。
  */
 @Composable
 private fun GlowCanvas(
@@ -830,7 +831,7 @@ private fun GlowCanvas(
         Box(
             modifier.background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF0A0A12), Color(0xFF12121E))
+                    listOf(Color(0xFFDFE3FF), Color(0xFFCDCFFF), Color(0xFFB9C2FE))
                 )
             )
         )
@@ -922,7 +923,7 @@ private fun GlowCanvas(
                         if (s == null) {
                             drawRect(
                                 Brush.verticalGradient(
-                                    listOf(Color(0xFF0A0A12), Color(0xFF12121E))
+                                    listOf(Color(0xFFDFE3FF), Color(0xFFCDCFFF), Color(0xFFB9C2FE))
                                 )
                             )
                             return@drawBehind

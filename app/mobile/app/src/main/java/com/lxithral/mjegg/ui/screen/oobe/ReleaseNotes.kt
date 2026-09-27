@@ -11,6 +11,7 @@ object ReleaseNotes {
 
     /** 当前版本的更新内容(新条目放最上面)。 */
     val notes: List<String> = listOf(
+        "修复 Android 11 等无辉光设备上 OOBE 黑屏 引导背景改浅色兜底",
         "支持 Android 11 起安装 模糊与玻璃效果按系统版本自动降级",
         "顶栏加 progressive 渐变模糊 内容滑过时向下渐清",
         "修复下一步按钮亮起后仍要等几秒才能点的假死",
