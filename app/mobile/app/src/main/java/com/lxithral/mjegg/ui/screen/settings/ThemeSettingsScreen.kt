@@ -16,6 +16,8 @@ import com.lxithral.mjegg.platform.SettingsStore
 import com.lxithral.mjegg.ui.theme.ThemePalette
 import com.lxithral.mjegg.ui.theme.paletteNameOf
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -66,8 +68,6 @@ fun ThemeSettingsScreen(settings: SettingsStore, onBack: () -> Unit) {
     val styleIndex = ThemePaletteStyle.entries.indexOf(settings.colorStyle).coerceAtLeast(0)
     val specItems = listOf("SPEC_2021", "SPEC_2025")
     val specIndex = if (settings.colorSpec == ThemeColorSpec.Spec2025) 1 else 0
-    val barItems = listOf("标准", "悬浮", "液态玻璃")
-    val barIndex = settings.bottomBarStyle.ordinal
 
     Scaffold(
         topBar = {
@@ -165,14 +165,31 @@ fun ThemeSettingsScreen(settings: SettingsStore, onBack: () -> Unit) {
             item {
                 SmallTitle("底栏")
                 Card(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    val glassAllowed = android.os.Build.VERSION.SDK_INT >= 33
                     OverlayDropdownPreference(
+                        entry = DropdownEntry(
+                            items = listOf(
+                                DropdownItem(
+                                    text = "标准",
+                                    selected = settings.bottomBarStyle == BottomBarStyle.STANDARD,
+                                    onClick = { settings.bottomBarStyle = BottomBarStyle.STANDARD },
+                                ),
+                                DropdownItem(
+                                    text = "悬浮",
+                                    selected = settings.bottomBarStyle == BottomBarStyle.FLOATING,
+                                    onClick = { settings.bottomBarStyle = BottomBarStyle.FLOATING },
+                                ),
+                                DropdownItem(
+                                    text = "液态玻璃",
+                                    // 液态玻璃要 RuntimeShader(Android 13+/API 33), 不满足时禁用不可选
+                                    enabled = glassAllowed,
+                                    selected = settings.bottomBarStyle == BottomBarStyle.LIQUID_GLASS,
+                                    onClick = { settings.bottomBarStyle = BottomBarStyle.LIQUID_GLASS },
+                                ),
+                            ),
+                        ),
                         title = "底栏形态",
-                        summary = "切换后立即生效",
-                        items = barItems,
-                        selectedIndex = barIndex,
-                        onSelectedIndexChange = { index ->
-                            settings.bottomBarStyle = BottomBarStyle.entries[index]
-                        },
+                        summary = if (glassAllowed) "切换后立即生效" else "液态玻璃需要 Android 13+ 当前不可用",
                         showValue = true,
                         startAction = { RowIcon(MiuixIcons.Layers) },
                     )

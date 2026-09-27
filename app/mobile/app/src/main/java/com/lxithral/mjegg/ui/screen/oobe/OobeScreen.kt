@@ -119,7 +119,7 @@ private const val DEBOUNCE_MS = 2000L           // StartupFragment 点击防抖
 private const val DISPLAY_OS_ANDO_MS = 2500L    // displayOsAndoDelay 兜底
 private const val BUTTON_IN_DELAY_MS = 1340L    // startPageBtnAnim setDelay(1340)
 private const val BUTTON_IN_DUR_MS = 450        // FolmeEase.cubicOut(450)
-private const val BUTTON_ENABLE_DELAY_MS = 2500L // delayEnableButton: 每页停留一小会再放行「继续」
+private const val BUTTON_ENABLE_DELAY_MS = 800L  // 换页动画(500ms)播完 + 300ms 放行「继续」
 private const val MORPH_MS = 505                // makeScaleUpAnim 转场(照抄 505ms 恢复窗口)
 private const val PAGE_SLIDE_MS = 500           // 页间翻页(放慢 + 视差淡出)
 
@@ -292,7 +292,7 @@ private fun SplashStep(
         MjLogoIcon(
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
-                .size(120.dp)
+                .size(140.dp)
                 .graphicsLayer {
                     scaleX = logoScale.value
                     scaleY = logoScale.value
@@ -358,13 +358,15 @@ private fun SplashStep(
     }
 }
 
-/** MJ logo: 直接用桌面启动图标原图(ic_launcher_foreground), 保证与桌面图标完全一致。 */
+/** MJ logo: 桌面启动图标原图(已裁掉自适应前景的透明安全边), 与桌面图标一致。
+ *  ic_launcher_foreground.png 是 432×432 画布只有中间 256 可见 —— 直接用会比
+ *  指定尺寸小一圈(实测 140dp 只渲染 66dp), 必须用裁好的 oobe_logo.png。 */
 @Composable
 private fun MjLogoIcon(modifier: Modifier = Modifier) {
     Image(
-        painter = painterResource(R.drawable.ic_launcher_foreground),
+        painter = painterResource(R.drawable.oobe_logo),
         contentDescription = null,
-        modifier = modifier.clip(RoundedCornerShape(22.dp)),
+        modifier = modifier,
     )
 }
 
@@ -774,7 +776,7 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                MjLogoIcon(Modifier.size(120.dp))
+                MjLogoIcon(Modifier.size(140.dp))
                 Spacer(Modifier.height(20.dp))
                 Text(
                     text = "MJ 彩蛋",
