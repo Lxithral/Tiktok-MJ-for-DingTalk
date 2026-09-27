@@ -135,26 +135,27 @@ private val MJ_LOGO_RED = Color(0xFFE0342F)      // MJ logo 底色（原版红�
 private val SMOOTH = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
 
 /** OOBE 流程页。Notes 仅在版本更新触发/开发者预览时插入首屏之后。 */
-private enum class OobePage { Splash, Notes, Permission, KeepAlive, Basic, Done }
+private enum class OobePage { Splash, Welcome, Permission, KeepAlive, Basic, Done }
 
 @Composable
-fun OobeScreen(settings: SettingsStore, showNotes: Boolean, onDone: () -> Unit) {
+fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val shaderSupported = isRuntimeShaderSupported()
     val glowActive = shaderSupported
     val blurGlass = settings.enableBlur && shaderSupported
 
-    // 流程页序: 首屏 → [本次更新] → 权限设置 → 保活设置 → 基础设置 → 完成
-    val pages = remember(showNotes) {
-        buildList {
-            add(OobePage.Splash)
-            if (showNotes) add(OobePage.Notes)
-            add(OobePage.Permission)
-            add(OobePage.KeepAlive)
-            add(OobePage.Basic)
-            add(OobePage.Done)
-        }
+    // 流程页序: 首屏 → 欢迎 → 权限设置 → 保活设置 → 基础设置 → 完成
+    // (用户决定: OOBE 不放更新日志, 只放欢迎页; 版本更新仍会重走一遍引导)
+    val pages = remember {
+        listOf(
+            OobePage.Splash,
+            OobePage.Welcome,
+            OobePage.Permission,
+            OobePage.KeepAlive,
+            OobePage.Basic,
+            OobePage.Done,
+        )
     }
     var step by remember { mutableIntStateOf(0) }
     // needAdmission 语义: 只有真正首入首屏放圆环; 点按钮前进或返回回首屏均不再放圈
@@ -208,7 +209,7 @@ fun OobeScreen(settings: SettingsStore, showNotes: Boolean, onDone: () -> Unit) 
 
                 // 每页渲染自己的内容(必须按页分派 —— 曾因共享 movable 内容把
                 // 权限页渲染成了第二个「本次更新」)
-                OobePage.Notes -> NotesStep(onBack = { step -= 1 }, onNext = { goNext() })
+                OobePage.Welcome -> WelcomeStep(onBack = { step -= 1 }, onNext = { goNext() })
                 OobePage.Permission -> PermissionStep(onBack = { step -= 1 }, onNext = { goNext() })
                 OobePage.KeepAlive -> KeepAliveStep(onBack = { step -= 1 }, onNext = { goNext() })
                 OobePage.Basic -> BasicStep(settings = settings, onBack = { step -= 1 }, onNext = { goNext() })
@@ -595,15 +596,15 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
 }
 
 /**
- * 本次更新页 —— 版本号变化时重进 OOBE 展示更新内容(开发者模式重跑也带本页预览)。
- * 条目来自 [ReleaseNotes.notes], 每次发版在顶部追加。
+ * 欢迎页 —— 引导第二步(全新安装与版本更新重走都会经过)。
+ * 用户决定: OOBE 不放更新日志, 这里只放一句欢迎 + 三步预告。
  */
 @Composable
-private fun NotesStep(onBack: () -> Unit, onNext: () -> Unit) {
+private fun WelcomeStep(onBack: () -> Unit, onNext: () -> Unit) {
     GuidePage(
-        title = "本次更新",
-        subtitle = "版本 ${com.lxithral.mjegg.BuildConfig.VERSION_NAME} 的更新内容",
-        icon = { PreviewImage(R.drawable.oobe_ic_notes) },
+        title = "欢迎使用 MJ 彩蛋",
+        subtitle = "接下来三步就好\n全程只读 随时可改",
+        icon = { MjLogoIcon(Modifier.size(70.dp)) },
         onBack = onBack,
         onNext = onNext,
     ) {
@@ -613,7 +614,11 @@ private fun NotesStep(onBack: () -> Unit, onNext: () -> Unit) {
                 .padding(horizontal = 20.dp),
         ) {
             Column(Modifier.padding(16.dp)) {
-                ReleaseNotes.notes.forEach { line ->
+                listOf(
+                    "在聊天输入框发送 mj 即刻上演蜘蛛侠动画",
+                    "支持 微信、QQ、钉钉、抖音 的聊天输入框",
+                    "彩蛋只读监听 不会替你打字或发消息",
+                ).forEach { line ->
                     Text(
                         text = "· $line",
                         color = MiuixTheme.colorScheme.onSurfaceContainer,

@@ -193,9 +193,6 @@ class SettingsStore private constructor(context: Context) {
             prefs.edit().putString(K_LAST_VERSION, v).apply()
         }
 
-    /** 开发者模式重跑引导时带「本次更新」页预览(会话内存, 不持久化)。 */
-    var pendingOobeNotes: Boolean = false
-
     /** OOBE 完成 → 主页首帧进场动画接力标志(会话内存, 不持久化)。
      *  主页读取后立即清掉, 播 scale 1.3→1.0 弹簧放大淡入(07 文档 §8.2 enter_home_anim)。 */
     var pendingHomeEnterAnim: Boolean = false
