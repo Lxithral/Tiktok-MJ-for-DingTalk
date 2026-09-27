@@ -115,6 +115,28 @@ fun AboutScreen(onBack: () -> Unit) {
                         }
                     },
                 )
+                ArrowPreference(
+                    title = "AndroidLiquidGlass",
+                    summary = "液态玻璃底栏视觉效果的改编来源 Apache-2.0",
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Kyant0/AndroidLiquidGlass"))
+                            )
+                        }
+                    },
+                )
+                ArrowPreference(
+                    title = "KernelSU",
+                    summary = "悬浮底栏与界面配色参考",
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/tiann/KernelSU"))
+                            )
+                        }
+                    },
+                )
             }
             Spacer(Modifier.height(28.dp))
         }

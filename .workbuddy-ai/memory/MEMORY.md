@@ -3,14 +3,18 @@
 ## 手机真机调试（ADB 无线）
 
 **验证工作流（2026-09-27 用户最新指令）**：每轮编译完成后 **ADB 有设备就自动装机**
-（install -r + 重绑定无障碍 + 启动验证），**没有设备就不装**、只报 APK 本地路径。
+（install -r + 启动验证），**没有设备就不装**、只报 APK 本地路径。
 不再逐轮征求装机许可。仍然禁止用 ADB 做装机以外的事（不点 UI、不代替用户验证交互）。
-注意：反复 `install -r` 会杀进程并导致 HyperOS 解绑/冻结无障碍服务，装完必须
-重开无障碍（settings put secure enabled_accessibility_services ...）或让用户重启手机，
-否则"发 mj 不触发"（详见下文 Greezer 教训）。
+注意：反复 `install -r` 会杀进程并导致 HyperOS 解绑/冻结无障碍服务；装完若服务被冻结，
+**告知用户手动重开无障碍或重启手机**，严禁用 ADB 重绑（见下文红线）。
+
+**🚫 每次测试两台都装（2026-09-27 用户指令）**：
+- **K60（Redmi 23013RK75C / mondrian），Android 17，HyperOS V816** —— 无线连接
+- **A11 测试机，有线 USB 连接**（adb 序列号实测 `8t95soifypfebuk7`，可能变，以 `adb devices` 为准）
+只装一台 = 另一台永远看不到新修复（v1.0.29 的三大金刚键适配就疑似因此没到 A11）。
+装完两台都要 `dumpsys package com.lxithral.mjegg | grep versionCode` 核对版本一致。
 
 adb 在 `D:/AAA_TOOLS/搞机工具箱10.1.0/adb.exe`（1.0.41 / 35.0.2）。
-手机是 **Redmi K60（23013RK75C / mondrian），Android 17，HyperOS V816，arm64-v8a**。
 
 **关键教训：用户给的 IP/端口经常是过期的。** 别照着用，直接 mDNS 发现：
 

@@ -23,11 +23,13 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -425,7 +427,7 @@ private fun PreviewImage(resId: Int) {
  * 向导页外壳 —— provision_detail_layout + provision_actionbar + GroupButtons：
  * 顶部 40dp 返回钮(actionbar marginTop 50dp) → 70dp 居中线描预览图标 → 居中标题 32sp
  * (minHeight 42dp, 35dp 水平) → 居中副标题 14sp(tertiary) → 内容 → 底部「继续」
- * 50dp 圆角 16dp(max 336dp, 底距 44dp)。进页按钮 1000ms 后才可点(delayEnableButton)。
+ * 50dp 圆角 16dp(max 336dp, 底距 44dp+导航栏 inset)。进页 530ms 后按钮才可点(换页动画播完)。
  */
 @Composable
 private fun GuidePage(
@@ -438,7 +440,7 @@ private fun GuidePage(
     onSkip: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    // delayEnableButton: 进页后 1000ms 按钮置灰, 防转场途中连点
+    // 进页后 530ms(换页动画 500ms + 30ms)按钮才亮, 防转场途中连点
     var enableDelayDone by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(BUTTON_ENABLE_DELAY_MS)
@@ -534,7 +536,7 @@ private fun GuidePage(
 
 /**
  * 底部主按钮 —— GroupButtons 主按钮观感(#3482FF, 50dp, 圆角 16dp, 白字 17sp,
- * max 336dp, 底距 44dp)。按钮本体不画禁用透明度 —— 否则"禁用 0.5→启用 1.0"
+ * max 336dp, 底距 44dp+导航栏 inset)。按钮本体不画禁用透明度 —— 否则"禁用 0.5→启用 1.0"
  * 会和外层淡入叠加出跳变(完成页「开始使用」踩过这个坑)。
  */
 @Composable
@@ -544,11 +546,13 @@ private fun ProvisionButton(
     onClick: () -> Unit,
     dark: Boolean = false,
 ) {
+    // 底距 44dp + 导航栏 inset —— 三大金刚键机型按钮不被系统按键压住
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 0.dp)
-            .padding(bottom = 44.dp),
+            .padding(bottom = 44.dp + navBottom),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -592,7 +596,7 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
 
     GuidePage(
         title = "权限设置",
-        subtitle = "开启无障碍后彩蛋才能收事件",
+        subtitle = "彩蛋靠无障碍服务只读监听聊天输入框的文本变化\n全程只读 不会替你打字或发消息",
         icon = { PreviewImage(R.drawable.oobe_ic_permission) },
         onBack = onBack,
         nextEnabled = connected || enabledInSettings,
@@ -608,7 +612,8 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
             StatusRow(
                 title = "无障碍服务",
                 checked = connected || enabledInSettings,
-                summary = if (connected) "已连接 正在收事件" else "点按跳转系统设置",
+                summary = if (connected) "已连接 正在收事件\n您可以稍后在「设置」中更改"
+                else "点按该行前往系统设置开启\n开启后返回本页即可继续",
                 showArrowWhenOff = true,
                 onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
             )
@@ -623,8 +628,9 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
         ) {
             Column(Modifier.padding(16.dp)) {
                 listOf(
-                    "在「已下载的应用」或「已安装的服务」里打开开关",
-                    "弹窗提示时选择允许",
+                    "① 进入系统「无障碍」设置页",
+                    "② 在「已下载的应用」或「已安装的服务」里找到 MJ 彩蛋",
+                    "③ 打开开关 弹窗提示时选择允许",
                 ).forEach { line ->
                     Text(
                         text = line,
