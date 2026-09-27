@@ -119,7 +119,7 @@ private const val DEBOUNCE_MS = 2000L           // StartupFragment 点击防抖
 private const val DISPLAY_OS_ANDO_MS = 2500L    // displayOsAndoDelay 兜底
 private const val BUTTON_IN_DELAY_MS = 1340L    // startPageBtnAnim setDelay(1340)
 private const val BUTTON_IN_DUR_MS = 450        // FolmeEase.cubicOut(450)
-private const val BUTTON_ENABLE_DELAY_MS = 800L  // 换页动画(500ms)播完 + 300ms 放行「继续」
+private const val BUTTON_ENABLE_DELAY_MS = 500L  // 与换页动画同长 —— 播完即可点
 private const val MORPH_MS = 505                // makeScaleUpAnim 转场(照抄 505ms 恢复窗口)
 private const val PAGE_SLIDE_MS = 500           // 页间翻页(放慢 + 视差淡出)
 
