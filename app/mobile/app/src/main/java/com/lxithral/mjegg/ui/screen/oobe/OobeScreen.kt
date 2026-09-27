@@ -188,18 +188,16 @@ fun OobeScreen(settings: SettingsStore, showNotes: Boolean, onDone: () -> Unit) 
     ) {
         val rootH = constraints.maxHeight.toFloat()
 
-        // 页间翻页: 500ms 平滑滑动 + 旧页 30% 视差淡出
+        // 页间翻页: 纯滑动(旧页淡出+视差会把辉光页洗白, 显得不协调), 双页同速对滑
         AnimatedContent(
             targetState = step,
             transitionSpec = {
                 if (targetState > initialState)
                     slideInHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { it } togetherWith
-                        (slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { -(it * 0.3f).roundToInt() } +
-                            fadeOut(tween(PAGE_SLIDE_MS)))
+                        slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { -it }
                 else
                     slideInHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { -it } togetherWith
-                        (slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { (it * 0.3f).roundToInt() } +
-                            fadeOut(tween(PAGE_SLIDE_MS)))
+                        slideOutHorizontally(tween(PAGE_SLIDE_MS, easing = SMOOTH)) { it }
             },
             label = "oobe",
         ) { target ->
@@ -294,7 +292,7 @@ private fun SplashStep(
         MjLogoIcon(
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
-                .size(90.dp)
+                .size(120.dp)
                 .graphicsLayer {
                     scaleX = logoScale.value
                     scaleY = logoScale.value
@@ -452,10 +450,12 @@ private fun GuidePage(
     Column(Modifier.fillMaxSize()) {
         Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
         // actionbar: marginTop 50dp + paddingVertical 8dp
+        // clip 成圆形再接点击 —— 否则水波纹按 40dp 方形可点区渲染, 触摸时出现方形阴影
         Box(
             Modifier
                 .padding(start = 20.dp, top = 8.dp)
                 .size(40.dp)
+                .clip(CircleShape)
                 .clickable(onClick = onBack),
         ) { BackIcon() }
 
@@ -505,17 +505,21 @@ private fun GuidePage(
 
         Spacer(Modifier.weight(1f))
 
-        ProvisionButton(
-            label = "继续",
-            enabled = canNext,
-            onClick = onNext,
-        )
+        // 门控半透明只在「继续」这一种场景画(置灰语义), 按钮本体不再自带禁用透明度
+        Box(Modifier.graphicsLayer { alpha = if (canNext) 1f else 0.5f }) {
+            ProvisionButton(
+                label = "继续",
+                enabled = canNext,
+                onClick = onNext,
+            )
+        }
     }
 }
 
 /**
  * 底部主按钮 —— GroupButtons 主按钮观感(#3482FF, 50dp, 圆角 16dp, 白字 17sp,
- * max 336dp, 底距 44dp)。禁用 = HALF_ALPHA 0.5 且不可点(OobeUtils.HALF_ALPHA)。
+ * max 336dp, 底距 44dp)。按钮本体不画禁用透明度 —— 否则"禁用 0.5→启用 1.0"
+ * 会和外层淡入叠加出跳变(完成页「开始使用」踩过这个坑)。
  */
 @Composable
 private fun ProvisionButton(
@@ -536,7 +540,6 @@ private fun ProvisionButton(
                 .widthIn(max = 336.dp)
                 .fillMaxWidth()
                 .height(50.dp)
-                .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
                 .clip(RoundedCornerShape(16.dp))
                 .background(if (dark) Color(0x99000000) else PROVISION_BLUE)
                 .clickable(enabled = enabled, onClick = onClick),
@@ -771,7 +774,7 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                MjLogoIcon(Modifier.size(90.dp))
+                MjLogoIcon(Modifier.size(120.dp))
                 Spacer(Modifier.height(20.dp))
                 Text(
                     text = "MJ 彩蛋",
