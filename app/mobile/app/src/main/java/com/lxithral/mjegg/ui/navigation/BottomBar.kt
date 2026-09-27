@@ -3,6 +3,9 @@ package com.lxithral.mjegg.ui.navigation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
@@ -74,12 +77,15 @@ fun BottomBar(
 
         BottomBarStyle.FLOATING, BottomBarStyle.LIQUID_GLASS -> {
             // 指南硬指标：导航栏 inset≠0 时离底 8dp+inset，否则离底 28dp。
+            // (三大金刚键机型 inset≠0 时底栏要让开系统按键, 否则被挡住/遮字)
+            val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val bottomPad = if (navBottom > 0.dp) 8.dp + navBottom else 28.dp
             Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.BottomCenter,
             ) {
                 FloatingBottomBar(
-                    modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 28.dp),
+                    modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = bottomPad),
                     selectedIndex = pagerState.currentPage,
                     onSelected = select,
                     backdrop = backdrop,

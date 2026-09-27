@@ -117,7 +117,7 @@ private val SINE_IN_OUT = CubicBezierEasing(0.37f, 0f, 0.63f, 1f)        // sine
 private const val DISPLAY_OS_ANDO_MS = 2500L    // displayOsAndoDelay 兜底
 private const val BUTTON_IN_DELAY_MS = 1340L    // startPageBtnAnim setDelay(1340)
 private const val BUTTON_IN_DUR_MS = 450        // FolmeEase.cubicOut(450)
-private const val BUTTON_ENABLE_DELAY_MS = 500L  // 与换页动画同长 —— 播完即可点
+private const val BUTTON_ENABLE_DELAY_MS = 530L  // 换页动画(500ms)播完 + 30ms 即可点
 private const val MORPH_MS = 505                // makeScaleUpAnim 转场(照抄 505ms 恢复窗口)
 private const val PAGE_SLIDE_MS = 500           // 页间翻页(放慢 + 视差淡出)
 
@@ -288,7 +288,7 @@ private fun SplashStep(
         MjLogoIcon(
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
-                .size(140.dp)
+                .size(110.dp)
                 .graphicsLayer {
                     scaleX = logoScale.value
                     scaleY = logoScale.value
@@ -503,14 +503,13 @@ private fun GuidePage(
 
         Spacer(Modifier.weight(1f))
 
-        // 门控半透明只在「继续」这一种场景画(置灰语义), 按钮本体不再自带禁用透明度
-        Box(Modifier.graphicsLayer { alpha = if (canNext) 1f else 0.5f }) {
-            ProvisionButton(
-                label = "继续",
-                enabled = canNext,
-                onClick = onNext,
-            )
-        }
+        // 不可点=灰色禁用态, 可点=亮色 —— 外观与 clickable 严格同帧翻转,
+        // 绝不出现"看起来可用却点不动"的中间态
+        ProvisionButton(
+            label = "继续",
+            enabled = canNext,
+            onClick = onNext,
+        )
     }
 }
 
@@ -539,7 +538,14 @@ private fun ProvisionButton(
                 .fillMaxWidth()
                 .height(50.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(if (dark) Color(0x99000000) else PROVISION_BLUE)
+                // 禁用 = 中性灰(明确不可用); 可用 = 亮色 —— 外观即状态
+                .background(
+                    when {
+                        !enabled -> Color(0xFF5A5A5A)
+                        dark -> Color(0x99000000)
+                        else -> PROVISION_BLUE
+                    }
+                )
                 .clickable(enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
@@ -591,6 +597,32 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
                 showArrowWhenOff = true,
                 onClick = { MjAccessibilityService.openAccessibilitySettings(context) },
             )
+        }
+
+        // 新手分步引导: 没用过无障碍的人照着三步就能开(各家 ROM 入口叫法都点了)
+        Spacer(Modifier.height(4.dp))
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                listOf(
+                    "① 进入系统「无障碍」设置页",
+                    "② 在「已下载的应用」或「已安装的服务」里找到 MJ 彩蛋",
+                    "③ 打开开关 弹窗提示时选择允许",
+                ).forEach { line ->
+                    Text(
+                        text = line,
+                        color = MiuixTheme.colorScheme.onSurfaceContainer,
+                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                        lineHeight = 21.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -733,10 +765,7 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
             launch {
                 delay(1000)                       // startBtnAnim setDelay(1000)
                 btnAlpha.animateTo(1f, tween(450, easing = SIN_OUT))
-            }
-            launch {
-                delay(2000)                       // startBtnAnim postDelayed(2000) setEnabled
-                btnReady = true
+                btnReady = true                   // 完全可见的同帧即可点(外观=可点严格同步)
             }
         }
     }
@@ -776,7 +805,7 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                MjLogoIcon(Modifier.size(140.dp))
+                MjLogoIcon(Modifier.size(110.dp))
                 Spacer(Modifier.height(20.dp))
                 Text(
                     text = "MJ 彩蛋",
