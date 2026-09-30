@@ -1,15 +1,21 @@
 package com.lxithral.mjegg.ui.navigation
 
+import android.app.Activity
+import android.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.core.view.WindowCompat
 import com.lxithral.mjegg.ui.MainScreen
 import com.lxithral.mjegg.ui.screen.about.AboutScreen
 import com.lxithral.mjegg.ui.screen.oobe.OobeScreen
 import com.lxithral.mjegg.ui.screen.settings.DiagnosticsScreen
 import com.lxithral.mjegg.ui.screen.settings.ThemeSettingsScreen
+import com.lxithral.mjegg.ui.theme.resolveIsDark
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
@@ -44,6 +50,21 @@ fun AppNavigation(settings: com.lxithral.mjegg.platform.SettingsStore) {
         NavSwipeDirection.RightToLeft
     } else {
         NavSwipeDirection.LeftToRight
+    }
+
+    // 系统栏深浅跟随当前页 —— 深色页: 导航栏黑底白键 + 状态栏白字;
+    // OOBE/浅色页: 导航栏透明(MIUI 浅灰)黑键 + 状态栏黑字。
+    // enableEdgeToEdge 按系统 uiMode 判深浅, 与 App 强制主题不一致时会
+    // 出现深色底黑字(看不见)或浅色底白字, 这里按页面实际深浅强制定。
+    val barView = LocalView.current
+    val barsDark = backStack.lastOrNull() !is Route.Oobe &&
+            resolveIsDark(settings.colorMode)
+    SideEffect {
+        val window = (barView.context as? Activity)?.window ?: return@SideEffect
+        window.navigationBarColor = if (barsDark) Color.BLACK else Color.TRANSPARENT
+        val controller = WindowCompat.getInsetsController(window, barView)
+        controller.isAppearanceLightNavigationBars = !barsDark
+        controller.isAppearanceLightStatusBars = !barsDark
     }
 
     CompositionLocalProvider(LocalNavigator provides navigator) {

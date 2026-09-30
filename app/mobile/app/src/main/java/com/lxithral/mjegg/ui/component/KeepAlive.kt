@@ -257,7 +257,7 @@ fun KeepAliveRows() {
         )
         StatusRow(
             title = "忽略电池优化",
-            summary = "${statusTextOf(ignoringBattery)} · 省电策略设为无限制 息屏久了也能收事件",
+            summary = "${statusTextOf(ignoringBattery)} · 省电策略设为无限制 息屏也能收事件",
             checked = ignoringBattery,
             onClick = {
                 requestIgnoreBatteryOptimizations(context)

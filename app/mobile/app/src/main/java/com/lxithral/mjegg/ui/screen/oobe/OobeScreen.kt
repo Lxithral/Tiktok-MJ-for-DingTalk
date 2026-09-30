@@ -629,8 +629,8 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
             Column(Modifier.padding(16.dp)) {
                 listOf(
                     "① 进入系统「无障碍」设置页",
-                    "② 在「已下载的应用」或「已安装的服务」里找到 MJ 彩蛋",
-                    "③ 打开开关 弹窗提示时选择允许",
+                    "② 打开「已下载的应用」或「已安装的服务」",
+                    "③ 找到 MJ 彩蛋 打开开关 选择「允许」",
                 ).forEach { line ->
                     Text(
                         text = line,
