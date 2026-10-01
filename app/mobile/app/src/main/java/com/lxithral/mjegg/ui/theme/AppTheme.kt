@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import com.lxithral.mjegg.R
 import com.lxithral.mjegg.platform.ColorMode
@@ -21,42 +20,41 @@ import top.yukonga.miuix.kmp.theme.defaultTextStyles
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 /**
- * 打包 MiSans 可变字体 —— 老系统(如 Android 11 只有小米兰亭 Pro)与 HyperOS 观感一致。
- * HyperOS 正文实为 Medium 字重, 只挂 VF 默认实例(400)会显细: 常规槽位直接取
- * wght 500, Bold 槽位取真 700(可变字重, 不用合成加粗)。
+ * 打包 MiSans 静态子集字重 —— 老系统(如 Android 11 只有小米兰亭 Pro)与 HyperOS 观感一致。
+ * HyperOS 正文实为 Medium 字重, VF 默认实例(400)显细, 而 Compose 的
+ * Font(variationSettings) 在部分机型实测不生效 —— 所以离线把 VF 实例化成
+ * 500/700 静态 TTF 并按 App 文案子集化(生成脚本: app/mobile/fonts-src/make_misans.py,
+ * 重新生成时机: 界面新增文案出现"豆腐块"时)。子集外的字符由平台回落系统字体。
  */
 private val miSans = FontFamily(
-    Font(
-        R.font.misans_vf,
-        weight = FontWeight.Normal,
-        variationSettings = FontVariation.Settings(FontVariation.weight(500)),
-    ),
-    Font(
-        R.font.misans_vf,
-        weight = FontWeight.Bold,
-        variationSettings = FontVariation.Settings(FontVariation.weight(700)),
-    ),
+    Font(R.font.misans_500, weight = FontWeight.Normal),
+    Font(R.font.misans_500, weight = FontWeight.Medium),
+    Font(R.font.misans_500, weight = FontWeight.SemiBold),
+    Font(R.font.misans_700, weight = FontWeight.Bold),
+    Font(R.font.misans_700, weight = FontWeight.Black),
 )
 
-private fun TextStyle.misans(): TextStyle = copy(fontFamily = miSans)
+private fun TextStyle.withFamily(family: FontFamily): TextStyle = copy(fontFamily = family)
 
-private val appTextStyles: TextStyles by lazy {
+private val appTextStyles: TextStyles by lazy { buildAppTextStyles(miSans) }
+
+private fun buildAppTextStyles(family: FontFamily): TextStyles {
     val b = defaultTextStyles()
-    b.copy(
-        main = b.main.misans(),
-        paragraph = b.paragraph.misans(),
-        body1 = b.body1.misans(),
-        body2 = b.body2.misans(),
-        button = b.button.misans(),
-        footnote1 = b.footnote1.misans(),
-        footnote2 = b.footnote2.misans(),
-        headline1 = b.headline1.misans(),
-        headline2 = b.headline2.misans(),
-        subtitle = b.subtitle.misans(),
-        title1 = b.title1.misans(),
-        title2 = b.title2.misans(),
-        title3 = b.title3.misans(),
-        title4 = b.title4.misans(),
+    return b.copy(
+        main = b.main.withFamily(family),
+        paragraph = b.paragraph.withFamily(family),
+        body1 = b.body1.withFamily(family),
+        body2 = b.body2.withFamily(family),
+        button = b.button.withFamily(family),
+        footnote1 = b.footnote1.withFamily(family),
+        footnote2 = b.footnote2.withFamily(family),
+        headline1 = b.headline1.withFamily(family),
+        headline2 = b.headline2.withFamily(family),
+        subtitle = b.subtitle.withFamily(family),
+        title1 = b.title1.withFamily(family),
+        title2 = b.title2.withFamily(family),
+        title3 = b.title3.withFamily(family),
+        title4 = b.title4.withFamily(family),
     )
 }
 
@@ -123,6 +121,7 @@ fun AppTheme(settings: SettingsStore, content: @Composable () -> Unit) {
         )
     }
 
+    // 打包 MiSans 全局文字(miuix 文字系统入口, 见 miSans 注释)
     MiuixTheme(controller = controller, textStyles = appTextStyles, content = content)
 }
 
