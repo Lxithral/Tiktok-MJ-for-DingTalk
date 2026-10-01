@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
-"""关于窗口: 应用图标 + 名称 + 版本号 + 开发者(圆形头像) + GitHub 按钮 + 致谢, 深浅色跟随系统."""
+"""关于窗口: 应用图标 + 名称 + 版本徽章 + 支持平台徽片 + 开发者(真实头像) + GitHub + 致谢.
+
+视觉规则: 红色只留给 GitHub 主按钮, 其余组件一律中性色;
+中文文字不小于 12px(雅黑在更小字号下发虚); 深浅色跟随系统实时切换.
+"""
 import os
 
 from PyQt6.QtCore import Qt, QRectF, QUrl
-from PyQt6.QtGui import QDesktopServices, QIcon, QPainter, QPainterPath, QPixmap
+from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFont, QIcon, QPainter,
+                         QPainterPath, QPen, QPixmap)
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from .paths import resource_path
@@ -11,9 +16,10 @@ from . import theme
 
 APP_NAME = "钉钉 MJ 彩蛋"
 APP_VERSION = "1.4.0"
-APP_SUBTITLE = "支持 钉钉 / 微信 / QQ"
+SUPPORTED_PLATFORMS = ("钉钉", "微信", "QQ", "抖音")
 DEVELOPER = "L'xithral"
 REPO_URL = "https://github.com/Lxithral/Tiktok-MJ-for-DingTalk"
+CREDIT_URL = "https://github.com/qiu7c/Tiktok-MJ-for-Wechat"
 
 # GitHub 官方 octocat 图标 (mark-github, MIT License, (c) GitHub)
 GITHUB_MARK_SVG = (
@@ -39,72 +45,102 @@ def github_icon_pixmap(size: int, color: str) -> QPixmap:
     return pm
 
 
-def circle_pixmap(source_path: str, diameter: int) -> QPixmap:
-    """把方形图片裁成抗锯齿圆形头像."""
-    src = QPixmap(source_path)
-    result = QPixmap(diameter, diameter)
-    result.fill(Qt.GlobalColor.transparent)
-    p = QPainter(result)
+def avatar_pixmap(source_path: str, size: int, border_color: str,
+                  fallback_letter: str, fallback_bg: str, fallback_fg: str) -> QPixmap:
+    """圆角方形头像(抗锯齿裁剪 + 1px 描边). 图片缺失时退回中性色首字母占位."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-    path_ = QPainterPath()
-    path_.addEllipse(QRectF(0, 0, diameter, diameter))
-    p.setClipPath(path_)
-    side = min(src.width(), src.height())
-    src = src.copy((src.width() - side) // 2, (src.height() - side) // 2, side, side)
-    p.drawPixmap(0, 0, diameter, diameter, src)
+    radius = size * 0.30
+    path = QPainterPath()
+    path.addRoundedRect(QRectF(0, 0, size, size), radius, radius)
+    src = QPixmap(source_path) if os.path.exists(source_path) else QPixmap()
+    if not src.isNull():
+        side = min(src.width(), src.height())
+        cropped = src.copy((src.width() - side) // 2, (src.height() - side) // 2, side, side)
+        p.setClipPath(path)
+        p.drawPixmap(0, 0, size, size, cropped)
+    else:
+        p.fillPath(path, QBrush(QColor(fallback_bg)))
+        font = QFont()
+        font.setBold(True)
+        font.setPixelSize(int(size * 0.48))
+        p.setFont(font)
+        p.setPen(QColor(fallback_fg))
+        p.drawText(QRectF(0, 0, size, size), Qt.AlignmentFlag.AlignCenter, fallback_letter)
+    p.setClipping(False)
+    pen = QPen(QColor(border_color))
+    pen.setWidthF(1.0)
+    p.setPen(pen)
+    p.drawPath(path)
     p.end()
-    return result
+    return pm
+
+
+def _chip(text: str) -> QLabel:
+    lab = QLabel(text)
+    lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lab.setFixedHeight(26)
+    return lab
 
 
 class AboutDialog(QDialog):
     def __init__(self, app_icon: QIcon, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"关于 {APP_NAME}")
-        self.setFixedSize(360, 420)
+        self.setFixedSize(380, 436)
         self.setWindowIcon(app_icon)
-
         self._icon = app_icon
-        avatar_path = resource_path("assets/avatar.jpg")
-        self._avatar_pm = (circle_pixmap(avatar_path, 96)
-                           if os.path.exists(avatar_path) else QPixmap())
+        self._avatar_path = resource_path("assets/avatar.jpg")
 
         v = QVBoxLayout(self)
-        v.setContentsMargins(28, 26, 28, 20)
-        v.setSpacing(6)
+        v.setContentsMargins(28, 26, 28, 16)
+        v.setSpacing(0)
 
         self._icon_label = QLabel()
-        self._icon_label.setFixedSize(76, 76)
+        self._icon_label.setFixedSize(84, 84)
         self._icon_label.setScaledContents(True)
         self._icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         v.addWidget(self._icon_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+        v.addSpacing(12)
 
         self._name_label = QLabel(APP_NAME)
         self._name_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        self._ver_label = QLabel(f"版本 {APP_VERSION}")
-        self._ver_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        self._sub_label = QLabel(APP_SUBTITLE)
-        self._sub_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         v.addWidget(self._name_label)
-        v.addWidget(self._ver_label)
-        v.addWidget(self._sub_label)
-        v.addSpacing(10)
-
-        line = QLabel()
-        line.setFixedHeight(1)
-        v.addWidget(line)
-        self._line = line
         v.addSpacing(8)
 
+        self._ver_chip = _chip(f"版本 {APP_VERSION}")
+        v.addWidget(self._ver_chip, alignment=Qt.AlignmentFlag.AlignHCenter)
+        v.addSpacing(16)
+
+        self._platform_title = QLabel("支持平台")
+        self._platform_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        v.addWidget(self._platform_title)
+        v.addSpacing(8)
+
+        chips = QHBoxLayout()
+        chips.setSpacing(10)
+        self._platform_chips = [_chip(p) for p in SUPPORTED_PLATFORMS]
+        chips.addStretch(1)
+        for chip in self._platform_chips:
+            chips.addWidget(chip)
+        chips.addStretch(1)
+        v.addLayout(chips)
+        v.addSpacing(16)
+
+        self._line = QLabel()
+        self._line.setFixedHeight(1)
+        v.addWidget(self._line)
+        v.addSpacing(14)
+
         row = QHBoxLayout()
-        row.setSpacing(14)
-        self._avatar_label = QLabel()
-        self._avatar_label.setFixedSize(64, 64)
-        if not self._avatar_pm.isNull():
-            self._avatar_label.setPixmap(self._avatar_pm.scaled(
-                64, 64, Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation))
+        row.setSpacing(12)
         row.addStretch(1)
+        self._avatar_label = QLabel()
+        self._avatar_label.setFixedSize(52, 52)
+        self._avatar_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         row.addWidget(self._avatar_label)
         col = QVBoxLayout()
         col.setSpacing(2)
@@ -119,14 +155,14 @@ class AboutDialog(QDialog):
 
         self._gh_button = QPushButton(" GitHub")
         self._gh_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._gh_button.setFixedSize(110, 34)
+        self._gh_button.setFixedSize(132, 36)
         self._gh_button.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl(REPO_URL)))
         self._gh_button.setToolTip(REPO_URL)
         v.addWidget(self._gh_button, alignment=Qt.AlignmentFlag.AlignHCenter)
-        v.addSpacing(4)
+        v.addSpacing(10)
 
-        self._credit = QLabel('动画素材与玩法致谢 qiu7c/Tiktok-MJ-for-Wechat')
+        self._credit = QLabel()
         self._credit.setOpenExternalLinks(True)
         self._credit.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         v.addWidget(self._credit)
@@ -136,21 +172,38 @@ class AboutDialog(QDialog):
     def apply_theme(self):
         c = theme.palette_dict()
         self.setStyleSheet(f"QDialog {{ background: {c['window_bg']}; }}")
-        self._icon_label.setPixmap(self._icon.pixmap(72, 72))
+        self._icon_label.setPixmap(self._icon.pixmap(80, 80))
+
+        chip_qss = (
+            f"QLabel {{ background: {c['card_bg']}; color: {c['subtext']};"
+            f" border: 1px solid {c['line']}; border-radius: 13px;"
+            f" padding: 0 12px; font-size: 12px; font-weight: 500; }}")
+        self._ver_chip.setStyleSheet(chip_qss)
+        for chip in self._platform_chips:
+            chip.setStyleSheet(chip_qss)
+
         for label, size, weight, color in (
-            (self._name_label, 19, 700, c["text"]),
-            (self._ver_label, 12, 400, c["subtext"]),
-            (self._sub_label, 11, 400, c["subtext"]),
-            (self._dev_title, 11, 400, c["subtext"]),
+            (self._name_label, 21, 700, c["text"]),
+            (self._platform_title, 12, 400, c["subtext"]),
+            (self._dev_title, 12, 400, c["subtext"]),
             (self._dev_name, 16, 600, c["text"]),
-            (self._credit, 10, 400, c["subtext"]),
+            (self._credit, 12, 400, c["subtext"]),
         ):
             label.setStyleSheet(
-                f"color: {color}; font-size: {size}px; font-weight: {weight}; background: transparent;")
+                f"color: {color}; font-size: {size}px; font-weight: {weight};"
+                f" background: transparent;")
+        # 链接颜色用内联 HTML(依赖主题), 不用 QSS 的 a 选择器 —— QLabel 富文本链接不走 QSS
+        self._credit.setText(
+            '动画素材与玩法致谢 <a href="%s" style="color:%s; text-decoration:none;">'
+            'qiu7c/Tiktok-MJ-for-Wechat</a>' % (CREDIT_URL, c["accent"]))
+
         self._line.setStyleSheet(f"background: {c['line']}; border: none;")
+        self._avatar_label.setPixmap(avatar_pixmap(
+            self._avatar_path, 52, c["line"],
+            DEVELOPER[0].upper(), c["card_bg"], c["subtext"]))
         self._gh_button.setIcon(QIcon(github_icon_pixmap(18, c["window_bg"])))
         self._gh_button.setStyleSheet(
             f"QPushButton {{ background: {c['accent']}; color: {c['window_bg']};"
-            f" border: none; border-radius: 17px; font-size: 14px; font-weight: 600; }}"
+            f" border: none; border-radius: 18px; font-size: 14px; font-weight: 600; }}"
             f"QPushButton:hover {{ background: {c['hover']}; }}"
             f"QPushButton:pressed {{ background: {c['accent']}; }}")
