@@ -44,3 +44,7 @@ Thumbs.db
 # MiSans 字体源(VF 20MB, 不入库; 子集产物在 res/font, 生成脚本 fonts-src/make_misans.py)
 app/mobile/fonts-src/*.ttf
 app/mobile/fonts-src/charset.txt
+
+# ZCode 工具产物(本地工具用, 不入库)
+.zcode/
+.zcodeignore
