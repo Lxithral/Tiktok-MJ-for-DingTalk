@@ -32,8 +32,8 @@ android {
         // miuix-blur 的 minSdk 33 声明在清单里 overrideLibrary 压掉
         minSdk = 30
         targetSdk = 36
-        versionCode = 36
-        versionName = "1.0.35"
+        versionCode = 38
+        versionName = "1.0.36"
     }
 
     signingConfigs {
@@ -50,9 +50,10 @@ android {
 
     buildTypes {
         release {
-            // 不开混淆: 无障碍服务由系统反射实例化, 且无法在本机真机验证 R8 结果, 保守起见关闭
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // R8 混淆+裁剪(2026-10-01 真机双机回归通过, APK 38.4MB→11.2MB):
+            // 无障碍服务/入口组件在 proguard-rules.pro keep, 崩溃堆栈保留行号
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             val rel = signingConfigs.getByName("release")
             if (rel.storeFile != null) {
