@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">MJ 彩蛋</string>
     <string name="accessibility_label">MJ 彩蛋</string>
-    <string name="accessibility_description">自己发 mj 时播放彩蛋动画。只读输入框文字，不自动发消息。</string>
+    <string name="accessibility_description">自己发 mj 时播放彩蛋动画</string>
 
     <string name="tab_home">主页</string>
     <string name="tab_feature">功能</string>
