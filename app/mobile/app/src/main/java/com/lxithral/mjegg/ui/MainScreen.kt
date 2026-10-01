@@ -51,7 +51,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { 3 })
-    val scrollBehavior = MiuixScrollBehavior()
+    // 三个 Tab 各自独立的顶栏折叠状态 —— 共用一个会在页间互相污染:
+    // 功能页上滑折叠后切回主页, 主页顶栏被顶成错误的大小/折叠态
+    val scrollBehaviorHome = MiuixScrollBehavior()
+    val scrollBehaviorFeature = MiuixScrollBehavior()
+    val scrollBehaviorSettings = MiuixScrollBehavior()
+    val scrollBehavior = when (pagerState.currentPage) {
+        0 -> scrollBehaviorHome
+        1 -> scrollBehaviorFeature
+        else -> scrollBehaviorSettings
+    }
     val scope = rememberCoroutineScope()
     val isDark = resolveIsDark(settings.colorMode)
     val navigator = LocalNavigator.current
@@ -163,12 +172,12 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
             beyondViewportPageCount = 1,
         ) { page ->
             when (page) {
-                0 -> HomeScreen(settings, isDark, padding, scrollBehavior)
-                1 -> FeatureScreen(settings, padding, scrollBehavior)
+            0 -> HomeScreen(settings, isDark, padding, scrollBehaviorHome)
+            1 -> FeatureScreen(settings, padding, scrollBehaviorFeature)
                 else -> SettingsScreen(
                     settings = settings,
                     padding = padding,
-                    scrollBehavior = scrollBehavior,
+                    scrollBehavior = scrollBehaviorSettings,
                     onOpenTheme = { navigator.push(Route.ThemeSettings) },
                     onOpenDiagnostics = { navigator.push(Route.Diagnostics) },
                     onOpenAbout = { navigator.push(Route.About) },
