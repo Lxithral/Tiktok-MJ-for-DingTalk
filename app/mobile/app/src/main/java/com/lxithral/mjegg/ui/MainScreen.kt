@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -97,6 +98,10 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
                         1 -> "功能"
                         else -> "设置"
                     },
+                    // progressive 模糊画在 Box 背景上, 顶栏底色必须透明才透得出来;
+                    // 关模糊/API<33 时保持原实底
+                    color = if (topBarBlur) Color.Transparent
+                    else MiuixTheme.colorScheme.surface,
                     scrollBehavior = scrollBehavior,
                 )
             }
