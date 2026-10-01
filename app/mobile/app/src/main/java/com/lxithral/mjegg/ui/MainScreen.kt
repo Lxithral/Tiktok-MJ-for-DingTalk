@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -152,6 +153,9 @@ fun MainScreen(settings: SettingsStore, onRerunOobe: () -> Unit) {
                     scaleX = homeScale.value
                     scaleY = homeScale.value
                     alpha = homeAlpha.value
+                    // 顶部锚点: 1.3 放大时内容向下扩 —— 中心锚点会把状态卡顶进
+                    // 顶栏的 progressive 模糊区, 落主页瞬间出现"卡片重影"(§8.2)
+                    transformOrigin = TransformOrigin(0.5f, 0f)
                 }
                 .then(
                     if (liquidGlassActive || topBarBlur) Modifier.layerBackdrop(backdrop) else Modifier

@@ -317,13 +317,13 @@ private fun SplashStep(
                 .weight(0.40f)
                 .fillMaxWidth(),
         ) {
-            // 字标(logo_image_wrapper): 顶对齐 + marginTop 20dp, 深蓝紫(#3939AB 取样),
-            // Black 字重(用户反馈 Bold 太细)
+            // 字标(logo_image_wrapper): 顶对齐 + marginTop 20dp, 深蓝紫(#3939AB 取样)
+            // 字重 Bold: 打包 MiSans 后是真 700(当年合成加粗显细才升的 Black, 现在不需要了)
             Text(
                 text = "MJ 彩蛋",
                 color = WORDMARK_INDIGO,
                 fontSize = 32.sp,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 maxLines = 3,
                 modifier = Modifier
@@ -494,7 +494,7 @@ private fun GuidePage(
                 color = MiuixTheme.colorScheme.onSurface,
                 fontSize = 32.sp,
                 lineHeight = 42.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Medium,   // provision 参考观感: 大标题 Medium, Bold 显臃肿
                 textAlign = TextAlign.Center,
                 maxLines = 3,
                 modifier = Modifier
@@ -728,7 +728,7 @@ private fun KeepAliveStep(onBack: () -> Unit, onNext: () -> Unit) {
         onNext = {
             // 不拦截流程 —— 但可检测项没全开时提醒一句(锁定后台系统探测不到, 不参与判断)
             if (keepAlive.autoStart != true || keepAlive.ignoringBattery != true) {
-                Toast.makeText(context, "建议开启全部保活项 否则息屏后可能收不到 mj", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "建议开启全部保活项", Toast.LENGTH_SHORT).show()
             }
             onNext()
         },
@@ -861,7 +861,7 @@ private fun DoneStep(glowActive: Boolean, blurGlass: Boolean, onDone: () -> Unit
                     text = "MJ 彩蛋",
                     color = WORDMARK_INDIGO,
                     fontSize = 32.sp,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Bold,   // 与首屏字标一致(真 700)
                     textAlign = TextAlign.Center,
                     maxLines = 3,
                 )

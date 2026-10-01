@@ -7,6 +7,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.font.FontWeight
 import com.lxithral.mjegg.R
 import com.lxithral.mjegg.platform.ColorMode
 import com.lxithral.mjegg.platform.SettingsStore
@@ -20,9 +22,21 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 /**
  * 打包 MiSans 可变字体 —— 老系统(如 Android 11 只有小米兰亭 Pro)与 HyperOS 观感一致。
- * 单 VF 实例(框架按 resId 缓存, 不重复加载); Bold 走系统合成加粗。
+ * HyperOS 正文实为 Medium 字重, 只挂 VF 默认实例(400)会显细: 常规槽位直接取
+ * wght 500, Bold 槽位取真 700(可变字重, 不用合成加粗)。
  */
-private val miSans = FontFamily(Font(R.font.misans_vf))
+private val miSans = FontFamily(
+    Font(
+        R.font.misans_vf,
+        weight = FontWeight.Normal,
+        variationSettings = FontVariation.Settings(FontVariation.weight(500)),
+    ),
+    Font(
+        R.font.misans_vf,
+        weight = FontWeight.Bold,
+        variationSettings = FontVariation.Settings(FontVariation.weight(700)),
+    ),
+)
 
 private fun TextStyle.misans(): TextStyle = copy(fontFamily = miSans)
 
