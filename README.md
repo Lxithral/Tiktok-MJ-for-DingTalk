@@ -1,4 +1,4 @@
-# MJ 彩蛋 · 多端（钉钉 / 微信 / QQ）
+# MJ 彩蛋 · 多端（钉钉 / 微信 / QQ / 抖音）
 
 在聊天窗口里**自己发送** `mj`、`mjmj`、`MJ`、`MjMj` 等组合时，全屏播放一段带透明通道的蜘蛛侠动画，播完自动消失，不抢焦点、不影响打字。
 
@@ -19,7 +19,7 @@ MJ-DingTalk/
 
 | 平台 | 钉钉 | 微信 | QQ | 抖音 | 屏幕键盘 |
 |---|---|---|---|---|---|
-| **电脑版** (Windows) | ✅ 实测 8.5.5 | ✅ 实测 4.x | ✅ 实测 NT 版 | — | ✅ Windows 触摸键盘 / 屏幕键盘 |
+| **电脑版** (Windows) | ✅ 实测 8.5.5 | ✅ 实测 4.x | ✅ 实测 NT 版 | ✅ 实测（私信） | ✅ Windows 触摸键盘 / 屏幕键盘 |
 | **手机版** (Android) | ✅ 实测 | ✅ 实测 | ✅ 实测 | ✅ 实测（私信） | ✅ 系统输入法即屏幕键盘 |
 
 两端共用同一套触发词规则与同一份动画素材。
@@ -40,7 +40,7 @@ pip install PyQt6 uiautomation pywin32 Pillow
 python main.py
 ```
 
-**打包**：双击 `app/desktop/build_exe.bat` → 产出 `dist/MJDingTalk.exe` + `dist/MJDingTalk-green-v1.3.0.zip`。
+**打包**：双击 `app/desktop/build_exe.bat` → 产出 `dist/MJDingTalk.exe` + `dist/MJDingTalk-green-v1.4.0.zip`。
 
 细节（各客户端输入框识别方式、屏幕键盘注入策略、素材制作、配置项）见 **[app/desktop/README.md](app/desktop/README.md)**。
 
@@ -74,9 +74,10 @@ cd app/mobile
 
 ## 验证情况
 
-**电脑版 —— 三端全部实机回归（2026-09-25，端到端真发消息）**
+**电脑版 —— 四端全部实机回归（2026-09-25 三端 / 2026-10-01 新增抖音，端到端真发消息）**
 
 - ✅ 微信 4.x / QQ NT / **钉钉**：真实发送 `mj` 均触发，动画锚定正确（坠落右上 / 荡绳左上）、自动关闭
+- ✅ **抖音**：真实发送 `mj` 到私信会话触发（焦点定位路径），坠落/荡绳交替正常、自动关闭；焦点在搜索框打 `mj` 不误触发
 - ✅ Windows 触摸键盘：点 `m` `j` 回车发送同样触发
 - ✅ 键盘缓冲兜底路径：故意写错输入框类名后仍能触发
 - ✅ 负向用例：`amj`、`mjm`、退格删字、中文输入法"上屏"都不触发
@@ -116,7 +117,7 @@ cd app/mobile
 监听发送动作 ──> 确认输入框被清空 ──> 播放透明动画
 ```
 
-**电脑版**：低级键盘钩子（`WH_KEYBOARD_LL`）+ UI Automation 轮询前台窗口的聊天输入框。三个客户端的技术栈不同，输入框的暴露方式也不同，因此每个客户端一个适配器（见 `app/desktop/mjegg/im_targets.py`）。
+**电脑版**：低级键盘钩子（`WH_KEYBOARD_LL`）+ UI Automation 轮询前台窗口的聊天输入框。四个客户端的技术栈不同，输入框的暴露方式也不同，因此每个客户端一个适配器（见 `app/desktop/mjegg/im_targets.py`）——钉钉/微信按类名定位，QQ 按类名子串定位，抖音整棵 UIA 树没有类名，改用**键盘焦点定位**（打字时输入框必然持有焦点）。
 
 **手机版**：`AccessibilityService` 监听 `TYPE_VIEW_TEXT_CHANGED`，跟踪聊天输入框的文本；命中触发词后输入框变空即判定为发送成功（见 `app/mobile/app/src/main/java/com/lxithral/mjegg/egg/EggTrigger.kt`）。
 

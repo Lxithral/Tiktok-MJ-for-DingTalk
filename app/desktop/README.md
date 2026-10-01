@@ -1,6 +1,6 @@
-# 钉钉 / 微信 / QQ MJ 彩蛋（电脑版）
+# 钉钉 / 微信 / QQ / 抖音 MJ 彩蛋（电脑版）
 
-在**钉钉 PC、微信 4.x、QQ NT** 的聊天输入框里自己发送 `mj`、`mjmj`、`MJ`、`MjMj` 等组合时，全屏播放带透明通道的蜘蛛侠动画。
+在**钉钉 PC、微信 4.x、QQ NT、抖音 PC** 的聊天输入框里自己发送 `mj`、`mjmj`、`MJ`、`MjMj` 等组合时，全屏播放带透明通道的蜘蛛侠动画。
 
 动画窗口**点击穿透、不抢焦点**，不影响打字和聊天；原版音效同步播放；播完自动消失。
 
@@ -19,25 +19,27 @@ python main.py
 
 启动后驻留在系统托盘（红底 MJ 图标）：右键菜单有 **启用/停用彩蛋、播放测试、开机自启、关于、退出**。
 
-"关于"窗口展示应用图标、名称、版本号（v1.3.0）和开发者，**深浅色跟随系统**并实时切换。
+"关于"窗口展示应用图标、名称、版本号（v1.4.0）和开发者，**深浅色跟随系统**并实时切换。
 
-在钉钉 / 微信 / QQ 任意聊天输入框输入 `mj`（或 `mjmj`/`MJMJ`…）按回车发送，动画即播。两段动画自动交替，并按素材构图锚定角落：**坠落**贴屏幕**右上角**，**荡绳**贴屏幕**左上角**（荡绳素材的蛛丝悬挂点在画面左边界之外，贴左播放才能与屏幕边缘自然衔接）。原视频音效同步播放。
+在钉钉 / 微信 / QQ / 抖音任意聊天输入框输入 `mj`（或 `mjmj`/`MJMJ`…）按回车发送，动画即播。两段动画自动交替，并按素材构图锚定角落：**坠落**贴屏幕**右上角**，**荡绳**贴屏幕**左上角**（荡绳素材的蛛丝悬挂点在画面左边界之外，贴左播放才能与屏幕边缘自然衔接）。原视频音效同步播放。
 
 ## 各客户端的输入框适配
 
-三个客户端技术栈完全不同，输入框的暴露方式也不同（2026-09 实测）：
+四个客户端技术栈完全不同，输入框的暴露方式也不同（2026-09/10 实测）：
 
 | 客户端 | 进程 | 输入框 UIA 类名 | 控件类型 | 读文本方式 | 需要唤醒 |
 |---|---|---|---|---|---|
 | 钉钉 | `DingTalk.exe` | `im_chat::InputRichTextEdit` | Edit | ValuePattern | 否 |
 | 微信 4.x | `Weixin.exe` | `mmui::ChatInputField` | Edit | ValuePattern | 否 |
 | QQ NT | `QQ.exe` | `ExEditor-qq-msg-editor` | Group（ProseMirror） | 遍历子 Text 节点 | **是** |
+| 抖音 | `douyin.exe` | （整树无类名） | Group（contenteditable） | **焦点定位** + 遍历子 Text 节点 | **是** |
 
 要点：
 
 - **微信**输入框类名是精确值，用类名全等匹配即可；同窗口里还有个 `mmui::XValidatorTextEdit`（搜索框），别搞混。
 - **QQ** 编辑器的 ClassName 是一整串，例如 `ProseMirror ExEditor-qq-msg-editor is-empty`，其中 `is-empty` 会随输入状态增减，所以只能用**子串匹配**（配置里的 `"match": "contains"`）。
-- **QQ 是 Chromium 壳，默认根本不构建无障碍树**（整棵树只有十几个节点）。程序会在定位失败时"敲一下"（`WM_GETOBJECT` + 前台激活）促使渲染进程建树，成功后再缓存节点。万一唤醒失败，会自动退回键盘缓冲兜底路径，功能不中断。
+- **QQ / 抖音是 Chromium 壳，默认根本不构建无障碍树**（整棵树只有十几个节点）。程序会在定位失败时"敲一下"（`WM_GETOBJECT` + 前台激活）促使渲染进程建树，成功后再缓存节点。万一唤醒失败，会自动退回键盘缓冲兜底路径，功能不中断。
+- **抖音整棵树的 ClassName 全是空**，输入框没有稳定的类名/AutomationId，没法按类名找。但打字时输入框（contenteditable）必然持有键盘焦点，所以用 `GetFocusedControl` 定位，再校验焦点属于目标进程（`"match": "focus"`，见下文配置）。读文本时遍历焦点元素的子 Text 节点，剔除占位符「发送消息」和编辑器零宽字符 `\u200b` —— 占位符只在输入框为空时存在于树上，不剔除「清空」判定就永远不成立。焦点不在输入框上时（搜索框、视频区等）子树里没有这两个特征，按**空输入框**处理而不是"读不到"，避免把打在搜索框里的 mj 误判成发送。
 
 ## Windows 屏幕键盘 / 触摸键盘支持
 
@@ -75,7 +77,7 @@ pip install pyinstaller
 python -m PyInstaller --noconfirm --clean --noconsole --onefile --icon assets/app.ico --add-data "assets;assets" --name MJDingTalk main.py
 ```
 
-产物为 `dist\MJDingTalk.exe`（单文件、无终端窗口，约 78MB），同时打包 `dist\MJDingTalk-green-v1.3.0.zip`（内含 exe + config.json，解压即用）。素材打包在 exe 内部；**config.json 和日志生成在 exe 旁边**（首次运行自动创建），想改配置就改 exe 旁边那份。onefile 首次启动需解压，等 1~3 秒属正常；如被杀软拦截，添加信任即可。发新版本时记得更新 `build_exe.bat` 顶部的 `VERSION` 变量。
+产物为 `dist\MJDingTalk.exe`（单文件、无终端窗口，约 78MB），同时打包 `dist\MJDingTalk-green-v1.4.0.zip`（内含 exe + config.json，解压即用）。素材打包在 exe 内部；**config.json 和日志生成在 exe 旁边**（首次运行自动创建），想改配置就改 exe 旁边那份。onefile 首次启动需解压，等 1~3 秒属正常；如被杀软拦截，添加信任即可。发新版本时记得更新 `build_exe.bat` 顶部的 `VERSION` 变量。
 
 ## 触发规则
 
@@ -158,7 +160,7 @@ fs[0].save('assets/mj-drop-alpha.webp', save_all=True, append_images=fs[1:], dur
 }
 ```
 
-- `match`：`exact`（默认，类名全等）/ `contains`（类名子串）
+- `match`：`exact`（默认，类名全等）/ `contains`（类名子串）/ `focus`（不按类名，直接用键盘焦点元素定位，抖音用；`input_class` 留空即可）
 - `wake_a11y`：`true` 时在定位失败后尝试唤醒 Chromium 系客户端的无障碍树
 
 > 旧版配置里的 `process_names` + `input_control_class`、以及 `ignore_injected_keys` 会自动迁移到新结构，不用手改。
@@ -167,6 +169,8 @@ fs[0].save('assets/mj-drop-alpha.webp', save_all=True, append_images=fs[1:], dur
 
 - ✅ 微信 4.x / QQ NT / 钉钉 三端实测（2026-09-25 端到端回归，`poc/test_trigger.py` 真发消息）：
   发送 `mj` 均触发，动画锚定正确、自动关闭
+- ✅ 抖音实测（2026-10-01 端到端真发，发到抖音 PC 私信会话）：连发多条 `mj` 均触发，
+  坠落/荡绳交替、锚定正确、自动关闭；焦点在搜索框打 `mj` 不误触发（`poc/probe_douyin_input.py` 可复查输入框结构）
 - ✅ Windows 触摸键盘实测：点 `m` `j` 回车发送同样触发
 - ✅ 键盘兜底路径实测：故意写错输入框类名后仍能触发；`amj` 负向用例不触发
 - ✅ 触发词规则、冷却防重、多实例互斥

@@ -1,6 +1,6 @@
 @echo off
 cd /d %~dp0
-set VERSION=v1.3.0
+set VERSION=v1.4.0
 
 echo Building dist\MJDingTalk.exe (1-2 minutes on first build)...
 python -m PyInstaller --noconfirm --clean --noconsole --onefile --icon assets/app.ico --add-data "assets;assets" --name MJDingTalk main.py

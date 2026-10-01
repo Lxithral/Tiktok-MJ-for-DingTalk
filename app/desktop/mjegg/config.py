@@ -85,7 +85,8 @@ def load_config():
                     item["match"] = spec["match"]
                 if spec.get("wake_a11y"):
                     item["wake_a11y"] = True
-                if item["process"] and item["input_class"]:
+                # focus 模式(抖音)不依赖类名, input_class 允许为空
+                if item["process"] and (item["input_class"] or item.get("match") == "focus"):
                     merged.append(item)
             if merged:
                 cfg["targets"] = merged

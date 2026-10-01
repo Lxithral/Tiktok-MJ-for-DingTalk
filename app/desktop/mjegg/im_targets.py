@@ -1,16 +1,23 @@
 # -*- coding: utf-8 -*-
-"""多 IM 目标适配: 钉钉 / 微信 / QQ 的聊天输入框定位与读取.
+"""多 IM 目标适配: 钉钉 / 微信 / QQ / 抖音的聊天输入框定位与读取.
 
-各客户端的技术栈不同, 输入框的暴露方式也不同 (2026-09 实测):
+各客户端的技术栈不同, 输入框的暴露方式也不同 (2026-09/10 实测):
 
 | 客户端 | 进程 | 输入框 UIA 类名 | 控件类型 | 读文本方式 |
 |---|---|---|---|---|
 | 钉钉   | DingTalk.exe | `im_chat::InputRichTextEdit` | EditControl | ValuePattern |
 | 微信 4.x | Weixin.exe | `mmui::ChatInputField` | EditControl | ValuePattern |
 | QQ NT  | QQ.exe | `ExEditor-qq-msg-editor` | GroupControl (ProseMirror) | 遍历子 Text 节点 |
+| 抖音   | douyin.exe | (无类名, Chromium Web) | GroupControl (contenteditable) | **焦点定位** + 遍历子 Text 节点 |
 
-QQ 是 Chromium 壳, 默认**不构建无障碍树**(只有十几个节点); 必须先用
+QQ / 抖音都是 Chromium 壳, 默认**不构建无障碍树**(只有十几个节点); 必须先用
 "前台激活 + 请求 UIA 对象" 敲一下, 渲染进程才会开始暴露真实控件树。
+
+抖音特殊点: 整棵树的 ClassName 全是空, 输入框没有稳定的类名/AutomationId,
+无法按类名定位。但用户打字时输入框(contenteditable)必然持有键盘焦点, 所以用
+GetFocusedControl 定位, 再校验焦点属于目标进程。读文本时剔除占位符"发送消息"
+与编辑器零宽字符 \\u200b (输入框为空时占位符仍在树上, 不剔除会导致"清空"判定
+永远不成立)。
 """
 import ctypes
 import ctypes.wintypes as wt
@@ -28,7 +35,8 @@ OBJID_CLIENT = 0xFFFFFFFC
 
 # 内置默认目标 (config.json 的 targets 会覆盖)
 #
-# match 字段: "exact" = ClassName 全等匹配; "contains" = ClassName 包含子串.
+# match 字段: "exact" = ClassName 全等匹配; "contains" = ClassName 包含子串;
+#             "focus" = 不按类名找, 直接用键盘焦点元素(抖音这种整树无类名的客户端).
 # QQ 编辑器的 ClassName 是一整串(如 "ProseMirror ExEditor-qq-msg-editor is-empty"),
 # 且 is-empty 会随输入状态增减, 所以只能用 contains.
 DEFAULT_TARGETS = [
@@ -36,11 +44,23 @@ DEFAULT_TARGETS = [
     {"process": "Weixin.exe", "input_class": "mmui::ChatInputField"},
     {"process": "QQ.exe", "input_class": "ExEditor-qq-msg-editor",
      "match": "contains", "wake_a11y": True},
+    {"process": "douyin.exe", "input_class": "",
+     "match": "focus", "wake_a11y": True},
 ]
 
 MAX_SEARCH_DEPTH = 32
 WALK_NODE_BUDGET = 4000      # contains 模式手工遍历的节点上限(防止极端 UI 卡死)
 WALK_MIN_INTERVAL_S = 0.8    # 手工遍历的最小间隔(失败时不要每次轮询都全树扫)
+
+# 抖音输入框特征: 占位符文本 与 contenteditable 的零宽字符标记
+DOUYIN_PLACEHOLDER = "发送消息"
+DOUYIN_ZWSP = "\u200b"
+
+
+def _hwnd_pid(hwnd) -> int:
+    pid = wt.DWORD(0)
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    return pid.value
 
 
 class InputTarget:
@@ -66,6 +86,13 @@ class InputTarget:
         """返回输入框 UIA 节点(带缓存). 找不到返回 None."""
         if not top_hwnd:
             return None
+        if self.match_mode == "focus":
+            # 抖音: 输入框无类名, 走键盘焦点定位. 焦点随时会转移, 不缓存.
+            node = self._locate_focus(top_hwnd)
+            if node is None and self.wake_a11y:
+                self._wake_and_search(top_hwnd)
+                node = self._locate_focus(top_hwnd)
+            return node
         if self._node is not None and not force and self._top_hwnd == top_hwnd:
             return self._node
         try:
@@ -84,6 +111,25 @@ class InputTarget:
         self._top_hwnd = top_hwnd
         log.info("[%s] 输入框已定位 cls=%s", self.process, self.input_class)
         return node
+
+    def _locate_focus(self, top_hwnd):
+        """抖音: 用键盘焦点元素定位输入框.
+
+        打字时输入框(contenteditable)必然持有焦点; 焦点不属于目标进程
+        (用户在别的窗口)时视为没找到.
+        """
+        try:
+            focused = uia.GetFocusedControl()
+        except Exception:
+            return None
+        if focused is None:
+            return None
+        try:
+            if focused.ProcessId != _hwnd_pid(top_hwnd):
+                return None
+        except Exception:
+            return None
+        return focused
 
     def _search(self, top):
         if self.match_mode in ("exact", "auto"):
@@ -182,6 +228,8 @@ class InputTarget:
         """读输入框当前文本. 空输入框返回 "". 读不到返回 None(触发兜底路径)."""
         if node is None:
             return None
+        if self.match_mode == "focus":
+            return self._read_focus_text(node)
         try:
             if hasattr(node, "GetValuePattern"):
                 # 控件类型支持 ValuePattern(钉钉/微信): 直接取值.
@@ -197,6 +245,45 @@ class InputTarget:
             log.debug("[%s] 读输入框失败(节点可能已失效): %s", self.process, e)
             self.invalidate()
             return None
+
+    def _read_focus_text(self, node):
+        """读抖音输入框: 焦点元素子孙 Text 节点拼接, 剔除占位符与零宽字符.
+
+        焦点不在输入框上时(搜索框/视频区等), 子树里没有输入框特征
+        (占位符"发送消息"或零宽字符), 返回 "" 而不是 None —— None 会让
+        调用方走键盘缓冲兜底, 把打在搜索框里的 mj 误判成发送.
+
+        占位符只在输入框为空时存在于树上, 不剔除会导致"清空"判定永不成立.
+        """
+        names = []
+        try:
+            self._collect_text_names(node, 1, names, [500])
+        except Exception as e:
+            log.debug("[%s] 读焦点输入框失败(元素可能已失效): %s", self.process, e)
+            return None
+        if not any(n == DOUYIN_PLACEHOLDER or n == DOUYIN_ZWSP for n in names):
+            return ""
+        return "".join(n for n in names
+                       if n != DOUYIN_ZWSP and n != DOUYIN_PLACEHOLDER).strip()
+
+    @staticmethod
+    def _collect_text_names(node, depth, out, budget, max_depth=8):
+        if depth > max_depth or budget[0] <= 0:
+            return
+        try:
+            children = node.GetChildren()
+        except Exception:
+            raise
+        for c in children:
+            budget[0] -= 1
+            if budget[0] <= 0:
+                return
+            try:
+                if c.ControlTypeName == "TextControl" and (c.Name or ""):
+                    out.append(c.Name)
+            except Exception:
+                continue
+            InputTarget._collect_text_names(c, depth + 1, out, budget, max_depth)
 
     @staticmethod
     def _read_descendants(node, max_depth=6):
