@@ -4,13 +4,47 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import com.lxithral.mjegg.R
 import com.lxithral.mjegg.platform.ColorMode
 import com.lxithral.mjegg.platform.SettingsStore
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.TextStyles
 import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.theme.darkColorScheme
+import top.yukonga.miuix.kmp.theme.defaultTextStyles
 import top.yukonga.miuix.kmp.theme.lightColorScheme
+
+/**
+ * 打包 MiSans 可变字体 —— 老系统(如 Android 11 只有小米兰亭 Pro)与 HyperOS 观感一致。
+ * 单 VF 实例(框架按 resId 缓存, 不重复加载); Bold 走系统合成加粗。
+ */
+private val miSans = FontFamily(Font(R.font.misans_vf))
+
+private fun TextStyle.misans(): TextStyle = copy(fontFamily = miSans)
+
+private val appTextStyles: TextStyles by lazy {
+    val b = defaultTextStyles()
+    b.copy(
+        main = b.main.misans(),
+        paragraph = b.paragraph.misans(),
+        body1 = b.body1.misans(),
+        body2 = b.body2.misans(),
+        button = b.button.misans(),
+        footnote1 = b.footnote1.misans(),
+        footnote2 = b.footnote2.misans(),
+        headline1 = b.headline1.misans(),
+        headline2 = b.headline2.misans(),
+        subtitle = b.subtitle.misans(),
+        title1 = b.title1.misans(),
+        title2 = b.title2.misans(),
+        title3 = b.title3.misans(),
+        title4 = b.title4.misans(),
+    )
+}
 
 /**
  * 全局主题入口 —— 唯一一处决定"现在该用什么配色"。
@@ -75,7 +109,7 @@ fun AppTheme(settings: SettingsStore, content: @Composable () -> Unit) {
         )
     }
 
-    MiuixTheme(controller = controller, content = content)
+    MiuixTheme(controller = controller, textStyles = appTextStyles, content = content)
 }
 
 /** 深浅色判定收敛到这一个函数, 全 App 只此一处。 */

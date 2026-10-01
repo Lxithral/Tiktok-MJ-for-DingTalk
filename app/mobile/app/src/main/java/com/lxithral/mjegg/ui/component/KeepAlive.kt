@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -221,11 +222,33 @@ fun openAutoStartSettings(context: Context) {
 // ---------- 三项保活设置行 ----------
 
 /**
+ * 保活三行的可观察状态 —— OOBE 保活页的「继续」要读它判断是否弹建议 toast;
+ * 设置页等不关心状态的调用方用默认参数, 行为与旧版一致。
+ */
+@Stable
+class KeepAliveState {
+    var autoStart by mutableStateOf<Boolean?>(null)
+    var ignoringBattery by mutableStateOf(false)
+    var bgLocked by mutableStateOf<Boolean?>(null)
+}
+
+/** 读取一次三项保活的真实系统状态(自启动/电池优化/锁定后台)。 */
+fun refreshKeepAliveState(context: Context, state: KeepAliveState) {
+    state.autoStart = isAutoStartAllowed(context)
+    state.ignoringBattery = isIgnoringBatteryOptimizations(context)
+    state.bgLocked = isBackgroundLocked(context)
+}
+
+/** 组合期持有保活状态 —— OOBE 保活页用它把行状态接到「继续」的判断上。 */
+@Composable
+fun rememberKeepAliveState(): KeepAliveState = remember { KeepAliveState() }
+
+/**
  * 保活设置三行(自启动 / 忽略电池优化 / 锁定后台)。
  * 状态在 ON_RESUME 时刷新(从系统页返回后对勾自动更新)。不构成流程门控。
  */
 @Composable
-fun KeepAliveRows() {
+fun KeepAliveRows(state: KeepAliveState = remember { KeepAliveState() }) {
     val context = LocalContext.current
     var refreshTick by remember { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -236,45 +259,45 @@ fun KeepAliveRows() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    var autoStart by remember { mutableStateOf(isAutoStartAllowed(context)) }
-    var ignoringBattery by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
-    var bgLocked by remember { mutableStateOf(isBackgroundLocked(context)) }
+    // 首帧就有真实状态(在组合期读一次, 避免先闪一帧"未开启"); 之后走 ON_RESUME 刷新
+    remember(state) {
+        refreshKeepAliveState(context, state)
+        true
+    }
     LaunchedEffect(refreshTick) {
-        autoStart = isAutoStartAllowed(context)
-        ignoringBattery = isIgnoringBatteryOptimizations(context)
-        bgLocked = isBackgroundLocked(context)
+        refreshKeepAliveState(context, state)
     }
 
     Column {
         StatusRow(
             title = "允许自启动",
-            summary = "${statusTextOf(autoStart)} · 被禁止时系统会冻结服务 收不到 mj",
-            checked = autoStart,
+            summary = "${statusTextOf(state.autoStart)} · 被禁止时系统会冻结服务 收不到 mj",
+            checked = state.autoStart,
             onClick = {
                 openAutoStartSettings(context)
-                autoStart = isAutoStartAllowed(context)
+                refreshKeepAliveState(context, state)
             },
         )
         StatusRow(
             title = "忽略电池优化",
-            summary = "${statusTextOf(ignoringBattery)} · 省电策略设为无限制 息屏也能收事件",
-            checked = ignoringBattery,
+            summary = "${statusTextOf(state.ignoringBattery)} · 省电策略设为无限制 息屏也能收事件",
+            checked = state.ignoringBattery,
             onClick = {
                 requestIgnoreBatteryOptimizations(context)
-                ignoringBattery = isIgnoringBatteryOptimizations(context)
+                refreshKeepAliveState(context, state)
             },
         )
         StatusRow(
             title = "锁定后台",
-            summary = "${statusTextOf(bgLocked)} · 在最近任务里把本应用卡片下拉加锁",
-            checked = bgLocked,
+            summary = "${statusTextOf(state.bgLocked)} · 在最近任务里把本应用卡片下拉加锁",
+            checked = state.bgLocked,
             onClick = {
                 Toast.makeText(
                     context,
                     "打开最近任务（多任务界面） 把「MJ 彩蛋」卡片往下拉即可锁定后台",
                     Toast.LENGTH_LONG,
                 ).show()
-                bgLocked = isBackgroundLocked(context)
+                refreshKeepAliveState(context, state)
             },
         )
     }

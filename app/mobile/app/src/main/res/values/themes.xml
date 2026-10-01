@@ -2,7 +2,8 @@
 <resources>
     <!-- Compose 接管全部绘制, 这里只提供一个无 ActionBar 的基础主题 -->
     <style name="Theme.MjEgg" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
+        <!-- 不透明底色: 透明背景会让系统跳过图标放大入场动画, 冷启动内容直接淡入且透出壁纸 -->
+        <item name="android:windowBackground">@color/launch_background</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>

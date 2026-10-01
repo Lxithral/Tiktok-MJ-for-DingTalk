@@ -2,4 +2,8 @@
 <resources>
     <!-- MJ 品牌红: 与桌面版 assets/app.ico 的红底一致 -->
     <color name="ic_launcher_background">#E63C3C</color>
+
+    <!-- 冷启动窗口底色: 若为透明, MIUI 会跳过图标放大入场动画(内容直接淡入且透出壁纸);
+         取值 = miuix 浅色 surface(#F7F7F7), 深色见 values-night -->
+    <color name="launch_background">#F7F7F7</color>
 </resources>

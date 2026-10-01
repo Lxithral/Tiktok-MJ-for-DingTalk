@@ -1,6 +1,7 @@
 package com.lxithral.mjegg.ui.screen.oobe
 
 import android.graphics.RuntimeShader
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
@@ -40,6 +41,7 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -82,6 +84,7 @@ import com.lxithral.mjegg.platform.SettingsStore
 import com.lxithral.mjegg.ui.component.KeepAliveRows
 import com.lxithral.mjegg.ui.component.LockIcon
 import com.lxithral.mjegg.ui.component.StatusRow
+import com.lxithral.mjegg.ui.component.rememberKeepAliveState
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -132,6 +135,10 @@ private const val FOREGROUND_FILL = 0x99000000   // anim_foreground_color(非模
 private val PROVISION_BLUE = Color(0xFF3482FF)   // provision_confirm_background / 线描图标
 private val CHECK_BLUE = Color(0xFF277AF7)       // provision_picker_btn_radio
 private val MJ_LOGO_RED = Color(0xFFE0342F)      // MJ logo 底色（原版红方块）
+private val PROVISION_BAND = Color(0xFFB9C2FE)   // 首屏/完成页渐变底(导航栏沉浸跟随)
+
+/** 当前页要求的导航栏底色覆盖; null = 用主题 surface。首屏/完成页淡紫渐变需要跟色。 */
+val navBandOverride = mutableStateOf<Color?>(null)
 
 // 页间翻页缓动: 平滑进出(material standard), 比 accelerate_decelerate 更柔
 private val SMOOTH = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
@@ -177,6 +184,13 @@ fun OobeScreen(settings: SettingsStore, onDone: () -> Unit) {
     BackHandler(enabled = step > 0) {
         if (step == 1) firstEntry = false
         step -= 1
+    }
+
+    // 首屏/完成页是淡紫渐变底, 导航栏底色跟页面走才沉浸; 其余页 null → AppNavigation 落回主题 surface
+    DisposableEffect(pages[step]) {
+        navBandOverride.value =
+            if (pages[step] == OobePage.Splash || pages[step] == OobePage.Done) PROVISION_BAND else null
+        onDispose { navBandOverride.value = null }
     }
 
     BoxWithConstraints(
@@ -438,6 +452,7 @@ private fun GuidePage(
     nextEnabled: Boolean = true,
     onNext: () -> Unit,
     onSkip: (() -> Unit)? = null,
+    blockedToast: String? = null,
     content: @Composable () -> Unit,
 ) {
     // 进页后 530ms(换页动画 500ms + 30ms)按钮才亮, 防转场途中连点
@@ -525,11 +540,20 @@ private fun GuidePage(
             }
         }
 
-        // 不可点=半透明蓝(置灰语义), 可点=全亮 —— 外观与 clickable 严格同帧翻转
+        // 不可点=半透明蓝(置灰语义), 可点=全亮 —— 外观即状态;
+        // 按钮始终可接收点击: 未就绪时弹 blockedToast 提示(而不是无响应的死角)
+        val buttonContext = LocalContext.current
         ProvisionButton(
             label = "继续",
             enabled = canNext,
-            onClick = onNext,
+            onClick = {
+                when {
+                    !enableDelayDone -> Unit   // 转场门控期内静默忽略
+                    nextEnabled -> onNext()
+                    blockedToast != null -> Toast.makeText(buttonContext, blockedToast, Toast.LENGTH_SHORT).show()
+                    else -> Unit
+                }
+            },
         )
     }
 }
@@ -562,10 +586,10 @@ private fun ProvisionButton(
                 .height(50.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(if (dark) Color(0x99000000) else PROVISION_BLUE)
-                // 禁用 = 半透明蓝(HALF_ALPHA, 优雅的置灰); 可用 = 全亮
-                // 与 clickable 严格同帧翻转 —— 不可点绝不显示可用态
+                // 禁用 = 半透明蓝(置灰语义); 可用 = 全亮 —— 外观即状态。
+                // clickable 不随 enabled 关闭: 未就绪时点击也要有响应(上层弹 toast), 不能是死角
                 .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
-                .clickable(enabled = enabled, onClick = onClick),
+                .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -602,6 +626,7 @@ private fun PermissionStep(onBack: () -> Unit, onNext: () -> Unit) {
         nextEnabled = connected || enabledInSettings,
         onNext = onNext,
         onSkip = onNext,   // 暂不设置: 跳过配置直接下一步
+        blockedToast = "请先开启无障碍服务",
     ) {
         // miuix 标准行(Card + BasicComponent), 尾部 未开=右箭头(提示可点)/已开=对勾
         Card(
@@ -693,19 +718,27 @@ private fun WelcomeStep(onBack: () -> Unit, onNext: () -> Unit) {
  */
 @Composable
 private fun KeepAliveStep(onBack: () -> Unit, onNext: () -> Unit) {
+    val keepAlive = rememberKeepAliveState()
+    val context = LocalContext.current
     GuidePage(
         title = "保活设置",
         subtitle = "彩蛋要在后台收事件\n否则息屏久了会收不到 mj",
         icon = { LockIcon() },
         onBack = onBack,
-        onNext = onNext,
+        onNext = {
+            // 不拦截流程 —— 但可检测项没全开时提醒一句(锁定后台系统探测不到, 不参与判断)
+            if (keepAlive.autoStart != true || keepAlive.ignoringBattery != true) {
+                Toast.makeText(context, "建议开启全部保活项 否则息屏后可能收不到 mj", Toast.LENGTH_SHORT).show()
+            }
+            onNext()
+        },
     ) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),
         ) {
-            KeepAliveRows()
+            KeepAliveRows(keepAlive)
         }
     }
 }
