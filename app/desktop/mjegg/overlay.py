@@ -156,21 +156,31 @@ def spawn_egg_window(height_ratio=0.85, volume=1.0) -> EggWindow:
     return EggWindow(height_ratio, volume)
 
 
-def draw_tray_icon_pixmap(size=64):
-    """生成一个红底白字 MJ 图标(无需外部 .ico)."""
-    from PyQt6.QtGui import QPixmap, QIcon
-    pm = QPixmap(size, size)
+def draw_app_icon_pixmap(size=64, dpr=1):
+    """红底白字 MJ 应用图标 QPixmap. dpr>1 时按物理像素渲染, 高 DPI 下不发虚."""
+    from PyQt6.QtGui import QPixmap
+    physical = int(size * dpr)
+    pm = QPixmap(physical, physical)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     p.setBrush(QColor(230, 60, 60))
     p.setPen(Qt.PenStyle.NoPen)
-    p.drawRoundedRect(2, 2, size - 4, size - 4, 14, 14)
+    p.drawRoundedRect(2, 2, physical - 4, physical - 4,
+                      physical * 0.22, physical * 0.22)
     p.setPen(QColor(255, 255, 255))
     f = QFont()
     f.setBold(True)
-    f.setPixelSize(int(size * 0.42))
+    f.setPixelSize(int(physical * 0.42))
     p.setFont(f)
     p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "MJ")
     p.end()
-    return QIcon(pm)
+    if dpr != 1:
+        pm.setDevicePixelRatio(dpr)
+    return pm
+
+
+def draw_tray_icon_pixmap(size=64):
+    """生成一个红底白字 MJ 图标(无需外部 .ico)."""
+    from PyQt6.QtGui import QIcon
+    return QIcon(draw_app_icon_pixmap(size))

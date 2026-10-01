@@ -7,11 +7,12 @@
 import os
 
 from PyQt6.QtCore import Qt, QRectF, QUrl
-from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFont, QIcon, QPainter,
-                         QPainterPath, QPen, QPixmap)
+from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFont, QGuiApplication, QIcon,
+                         QPainter, QPainterPath, QPen, QPixmap)
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from .paths import resource_path
+from .overlay import draw_app_icon_pixmap
 from . import theme
 
 APP_NAME = "钉钉 MJ 彩蛋"
@@ -46,36 +47,44 @@ def github_icon_pixmap(size: int, color: str) -> QPixmap:
 
 
 def avatar_pixmap(source_path: str, size: int, border_color: str,
-                  fallback_letter: str, fallback_bg: str, fallback_fg: str) -> QPixmap:
-    """圆角方形头像(抗锯齿裁剪 + 1px 描边). 图片缺失时退回中性色首字母占位."""
-    pm = QPixmap(size, size)
+                  fallback_letter: str, fallback_bg: str, fallback_fg: str,
+                  dpr: float = 1.0) -> QPixmap:
+    """圆角方形头像(抗锯齿裁剪 + 描边). dpr>1 按物理像素渲染, 高 DPI 下不发虚.
+
+    图片缺失时退回中性色首字母占位.
+    """
+    physical = int(size * dpr)
+    pm = QPixmap(physical, physical)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-    radius = size * 0.30
+    radius = physical * 0.30
     path = QPainterPath()
-    path.addRoundedRect(QRectF(0, 0, size, size), radius, radius)
+    path.addRoundedRect(QRectF(0, 0, physical, physical), radius, radius)
     src = QPixmap(source_path) if os.path.exists(source_path) else QPixmap()
     if not src.isNull():
         side = min(src.width(), src.height())
         cropped = src.copy((src.width() - side) // 2, (src.height() - side) // 2, side, side)
         p.setClipPath(path)
-        p.drawPixmap(0, 0, size, size, cropped)
+        p.drawPixmap(0, 0, physical, physical, cropped)
     else:
         p.fillPath(path, QBrush(QColor(fallback_bg)))
         font = QFont()
         font.setBold(True)
-        font.setPixelSize(int(size * 0.48))
+        font.setPixelSize(int(physical * 0.48))
         p.setFont(font)
         p.setPen(QColor(fallback_fg))
-        p.drawText(QRectF(0, 0, size, size), Qt.AlignmentFlag.AlignCenter, fallback_letter)
+        p.drawText(QRectF(0, 0, physical, physical), Qt.AlignmentFlag.AlignCenter,
+                   fallback_letter)
     p.setClipping(False)
     pen = QPen(QColor(border_color))
-    pen.setWidthF(1.0)
+    pen.setWidthF(max(1.0, dpr))
     p.setPen(pen)
     p.drawPath(path)
     p.end()
+    if dpr != 1.0:
+        pm.setDevicePixelRatio(dpr)
     return pm
 
 
@@ -169,10 +178,21 @@ class AboutDialog(QDialog):
 
         self.apply_theme()
 
+    def _screen_dpr(self) -> float:
+        """当前所在屏幕的 devicePixelRatio(未显示时退回主屏), 位图按它渲染才不虚."""
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        return screen.devicePixelRatio() if screen else 1.0
+
+    def showEvent(self, ev):
+        # 弹出时按实际所在屏幕重渲染位图(多屏 DPR 不同/首帧前 DPR 未定)
+        super().showEvent(ev)
+        self.apply_theme()
+
     def apply_theme(self):
         c = theme.palette_dict()
+        dpr = self._screen_dpr()
         self.setStyleSheet(f"QDialog {{ background: {c['window_bg']}; }}")
-        self._icon_label.setPixmap(self._icon.pixmap(80, 80))
+        self._icon_label.setPixmap(draw_app_icon_pixmap(84, dpr))
 
         chip_qss = (
             f"QLabel {{ background: {c['card_bg']}; color: {c['subtext']};"
@@ -200,7 +220,7 @@ class AboutDialog(QDialog):
         self._line.setStyleSheet(f"background: {c['line']}; border: none;")
         self._avatar_label.setPixmap(avatar_pixmap(
             self._avatar_path, 52, c["line"],
-            DEVELOPER[0].upper(), c["card_bg"], c["subtext"]))
+            DEVELOPER[0].upper(), c["card_bg"], c["subtext"], dpr))
         self._gh_button.setIcon(QIcon(github_icon_pixmap(18, c["window_bg"])))
         self._gh_button.setStyleSheet(
             f"QPushButton {{ background: {c['accent']}; color: {c['window_bg']};"
